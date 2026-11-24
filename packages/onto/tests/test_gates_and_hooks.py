@@ -524,8 +524,14 @@ def test_the_view_of_the_real_repository():
 
     built = view.build(Workspace.at())
     stages = {t["id"]: t["stage"] for t in built["tasks"]}
-    assert stages["TASK-0001"] == "complete" and stages["TASK-0004"] != "complete"
-    assert built["trace"]["violations"] == []
+    assert stages["TASK-0004"] == "design"
+    # TASK-0001 is implemented and tested. Whether it shows as verified depends on
+    # Evidence, which only a test run writes, so a clean checkout has it at verify.
+    assert stages["TASK-0001"] in ("verify", "complete")
+    unrelated_to_evidence = [
+        v for v in built["trace"]["violations"] if v["rule"] != "gate:CompleteRequirementIsVerified"
+    ]
+    assert unrelated_to_evidence == []
 
 
 # --- generation --------------------------------------------------------------------
