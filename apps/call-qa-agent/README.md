@@ -90,8 +90,8 @@ The two calls under `data/` are invented. A real transcript is personal
 information, which the ontology records: `Call`, `Utterance` and `text` are
 classified `PII`, and a Requirement that uses them must carry a high risk tier.
 
-- Decide where inference may run and what the provider retains. The default
-  model is not available under zero data retention on every platform.
+- Decide where inference may run and what the provider retains, and check that
+  the model and platform you choose meet it.
 - Redact what the scorecard does not need before the transcript leaves your
   boundary. This app sends the transcript as it is given.
 - `REQ-0008`, keeping utterance text out of logs, is in progress and has no test
