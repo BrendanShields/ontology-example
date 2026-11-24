@@ -10,7 +10,7 @@ The glossary is the closed list of names this context may use. A request arrives
 
 What exists today:
 
-!`"${CLAUDE_PROJECT_DIR}"/bin/onto overview`
+!`${CLAUDE_PROJECT_DIR}/bin/onto overview`
 
 ## Steps
 

@@ -1,0 +1,4 @@
+ts	phase	decision	why	evidence	result
+2026-11-24T23:39:09Z	design	compute score, outcome and disposition in the domain layer, never take them from the model	a model is unreliable at arithmetic and at keeping to a closed list	DEC-0006	accepted
+2026-11-24T23:39:10Z	design	leave NOT_APPLICABLE Findings out of the score's denominator	a call with no complaint was losing the weight of the complaint criterion	DEC-0005 supersedes DEC-0004	accepted
+2026-11-24T23:39:10Z	verify	check the score with generated scorecards, not three hand-picked ones	rounding and the nothing-applicable case are where a formula goes wrong	apps/call-qa-agent/tests/acceptance/test_scoring.py	tests green

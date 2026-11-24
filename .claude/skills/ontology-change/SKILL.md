@@ -8,7 +8,7 @@ allowed-tools: Read, Grep, Bash(${CLAUDE_PROJECT_DIR}/bin/onto *), Bash(bin/onto
 
 The glossaries and the requests open now:
 
-!`"${CLAUDE_PROJECT_DIR}"/bin/onto overview`
+!`${CLAUDE_PROJECT_DIR}/bin/onto overview`
 
 Follow the **Ontology change** playbook of **ostack-mode**: open `.claude/skills/ostack-mode/playbooks/ontology-change.md`, copy its steps into the task list word for word, and work through them. A step you do not do stays listed with `skip: <reason>`.
 

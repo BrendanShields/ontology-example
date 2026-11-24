@@ -210,7 +210,9 @@ The app talks to the Messages API directly and hosts its own tool loop. That is 
 
 ## Working in Claude Code
 
-Open Claude Code at the repository root. [`CLAUDE.md`](CLAUDE.md) orients it and [`.claude/settings.json`](.claude/settings.json) wires the gates in as hooks.
+Open Claude Code at the repository root. [`CLAUDE.md`](CLAUDE.md) orients it and [`.claude/settings.json`](.claude/settings.json) wires the gates in as hooks. To see one fire, ask Claude to add the line `rubric = 1` to `apps/call-qa-agent/src/call_qa_agent/domain/scoring.py`: the term check answers that the glossary calls this Scorecard.
+
+The hooks run `bin/onto` on your machine whenever Claude edits a file or stops. Read `.claude/settings.json` before you open a clone of this repository that you did not write.
 
 **The workflow is a modified pstack.** `/ostack-mode` is pstack's router adapted for this repository. It picks a playbook (Feature, Bug fix, Investigation, Ontology change) and copies its steps into the task list word for word, so a skipped step stays visible with its reason. The ontology gates are numbered steps in those playbooks, each tagged with its stage:
 

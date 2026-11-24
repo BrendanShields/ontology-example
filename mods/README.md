@@ -29,8 +29,13 @@ Or install them from the marketplace file at the repository root
 claude plugin marketplace add .
 ```
 
-then, inside Claude Code, `/plugin install sdlc-stages`, and the same for the
-other two.
+```bash
+claude plugin install sdlc-stages@ontology-example
+```
+
+and the same for `ontology-map` and `work-plan`. A marketplace added from a
+folder is read from that folder, so an edit to a mod takes effect after
+`/reload-plugins` without reinstalling.
 
 Start Claude Code inside the monorepo: a mod finds the root by looking for
 `onto.toml` in the working directory and its parents. `bin/onto` must work, so
