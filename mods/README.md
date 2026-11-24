@@ -37,9 +37,10 @@ and the same for `ontology-map` and `work-plan`. A marketplace added from a
 folder is read from that folder, so an edit to a mod takes effect after
 `/reload-plugins` without reinstalling.
 
-Start Claude Code inside the monorepo: a mod finds the root by looking for
-`onto.toml` in the working directory and its parents. `bin/onto` must work, so
-run `uv sync` first.
+A mod finds the monorepo by looking for `onto.toml` in the session's working
+directory, then in its parents, then in the folders directly inside it. So it
+works when Claude Code is started inside the monorepo or one level above it.
+`bin/onto` must work, so run `uv sync` first.
 
 ## What a mod is made of
 

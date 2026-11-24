@@ -13,7 +13,9 @@ dist/
 work/evidence/
 prov/*.ttl
 
-# Types the Claude Code engine writes into a mod folder when it loads the mod
+# What the Claude Code engine writes into a mod folder when it loads the mod:
+# the API types, and a tsconfig.json that extends them
 mods/*/.claude-plugin/types/
+mods/*/tsconfig.json
 
 .DS_Store

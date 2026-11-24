@@ -118,11 +118,40 @@ test('a failing onto run is shown, not hidden', async ($, on) => {
   await ui.unmount()
 })
 
+test('started one level above the checkout, the monorepo is still found', async ($, on) => {
+  on('command.register', () => ({ value: { command: 'sdlc' } }))
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('session.cwd', () => ({ value: '/home/user' }))
+  on('fs.stat', (_, e) =>
+    e.path === '/home/user/ontology-example/onto.toml'
+      ? { value: { kind: 'file', size: 1, mtimeMs: 0, isLink: false } }
+      : { deny: 'missing' },
+  )
+  on('fs.list', () => ({
+    value: [
+      { name: '.cache', kind: 'dir', size: 0, mtimeMs: 0, isLink: false },
+      { name: 'notes.txt', kind: 'file', size: 1, mtimeMs: 0, isLink: false },
+      { name: 'ontology-example', kind: 'dir', size: 0, mtimeMs: 0, isLink: false },
+    ],
+  }))
+  const calls: (readonly string[])[] = []
+  on('process.run', (_, e) => {
+    calls.push(e.argv)
+
+    return ran(JSON.stringify(VIEW))
+  })
+
+  await $.command.run(RUN)
+
+  expect(calls.at(-1)?.[0]).toBe('/home/user/ontology-example/bin/onto')
+})
+
 test('outside the monorepo the pane says so', async ($, on) => {
   on('command.register', () => ({ value: { command: 'sdlc' } }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('session.cwd', () => ({ value: '/somewhere/else' }))
   on('fs.stat', () => ({ deny: 'missing' }))
+  on('fs.list', () => ({ value: [] }))
 
   await $.command.run(RUN)
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })

@@ -258,7 +258,8 @@ Not checked:
 
 - **The agent has not called a real model.** No API credentials were used. Nothing here says how well Claude judges a call: the tests cover the request, the loop and the rules.
 - **The Bedrock path has not been run.** It is written from the SDK's documented client and model-id conventions.
-- **The hooks, skills, subagents and mods have not been used in a live Claude Code session.** Their formats follow the current documentation and the mods pass the engine's validator, but nobody has watched a playbook run or a pane render.
+- **The hooks, skills and subagents have not been used in a live Claude Code session.** Their formats follow the current documentation, but nobody has watched a playbook run.
+- **Nobody has looked at a mod's pane.** The three mods loaded in a live Claude Code session with no failure reported, and they pass the engine's validator. What a pane looks like on screen is unchecked.
 - **The CI workflow has not run on GitHub.** Its steps are the ones `make check` runs.
 
 ## Design notes
