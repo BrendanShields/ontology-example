@@ -1,0 +1,9 @@
+#!/bin/sh
+# Runs the `onto` CLI from the workspace virtualenv, wherever it is called from.
+# Hooks and CI call this path so they never depend on an activated environment.
+ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
+if [ -x "$ROOT/.venv/bin/python" ]; then
+    exec "$ROOT/.venv/bin/python" -m onto "$@"
+fi
+echo "onto: no virtualenv at $ROOT/.venv. Run 'uv sync' in $ROOT first." >&2
+exit 1

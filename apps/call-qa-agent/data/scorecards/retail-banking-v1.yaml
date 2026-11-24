@@ -1,0 +1,32 @@
+# An example Scorecard. The wording of the Criteria is illustrative: a real one
+# comes from the quality team and from the obligations that apply to the calls.
+scorecard_id: retail-banking-v1
+pass_mark: 80
+criteria:
+  - criterion_id: greeting
+    statement: The Representative greets the customer and gives their own first name.
+    weight: 5
+  - criterion_id: recording-notice
+    statement: >-
+      The customer is told that the Call is recorded, by the Representative or
+      by a recorded announcement.
+    weight: 10
+  - criterion_id: identity-verified
+    statement: >-
+      The Representative verifies the customer's identity before disclosing or
+      changing anything on an account.
+    weight: 30
+    critical: true
+  - criterion_id: request-confirmed
+    statement: The Representative restates the customer's request to confirm it was understood.
+    weight: 15
+  - criterion_id: request-resolved
+    statement: >-
+      The Representative resolves the request, or explains the next step and
+      when it will happen.
+    weight: 25
+  - criterion_id: complaint-handled
+    statement: >-
+      When the customer expresses dissatisfaction, the Representative
+      acknowledges it and offers to record a complaint.
+    weight: 15

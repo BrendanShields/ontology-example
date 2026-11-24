@@ -1,0 +1,24 @@
+{
+  "name": "ontology-example",
+  "owner": { "name": "ontology-example" },
+  "metadata": {
+    "description": "Claude mods that draw the ontology layer of this monorepo: SDLC stage per task, the ontology, and the plan."
+  },
+  "plugins": [
+    {
+      "name": "sdlc-stages",
+      "source": "./mods/sdlc-stages",
+      "description": "Which SDLC stage each task is at, and the gate that guards it."
+    },
+    {
+      "name": "ontology-map",
+      "source": "./mods/ontology-map",
+      "description": "Browse the ontology: terms, definitions, denied synonyms, workflow links."
+    },
+    {
+      "name": "work-plan",
+      "source": "./mods/work-plan",
+      "description": "The playbook steps and the typed plan under work/."
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+# Synthetic. Every name and detail in this Call is invented.
+call_id: CALL-0001
+started_at: "2026-11-03T09:14:00+11:00"
+representative: REP-0417
+utterances:
+  - {sequence: 1, speaker: SYSTEM, text: "Thank you for calling Example Bank. This call is recorded for quality and training purposes."}
+  - {sequence: 2, speaker: REPRESENTATIVE, text: "Good morning, you're speaking with Priya. How can I help you today?"}
+  - {sequence: 3, speaker: CUSTOMER, text: "Hi Priya. A payment I made on Friday hasn't shown up at the other end and I'd like to know why."}
+  - {sequence: 4, speaker: REPRESENTATIVE, text: "Of course. Before I look at the account I need to confirm who I'm speaking with. Can I have your full name and date of birth?"}
+  - {sequence: 5, speaker: CUSTOMER, text: "Sam Taylor, the fourth of March nineteen eighty-five."}
+  - {sequence: 6, speaker: REPRESENTATIVE, text: "Thanks, Sam. And the postcode we have on the account?"}
+  - {sequence: 7, speaker: CUSTOMER, text: "Three zero five one."}
+  - {sequence: 8, speaker: REPRESENTATIVE, text: "Thank you, that all matches. So you made a payment on Friday and it isn't showing as received, is that right?"}
+  - {sequence: 9, speaker: CUSTOMER, text: "Yes, to my electricity provider."}
+  - {sequence: 10, speaker: REPRESENTATIVE, text: "I can see it. It was submitted after Friday's cut-off, so it is being processed today and will reach them by tomorrow morning. You don't need to do anything else."}
+  - {sequence: 11, speaker: CUSTOMER, text: "Great, thanks for checking."}
+  - {sequence: 12, speaker: REPRESENTATIVE, text: "You're welcome. Is there anything else I can help with?"}
+  - {sequence: 13, speaker: CUSTOMER, text: "No, that's all."}

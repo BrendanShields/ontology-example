@@ -1,0 +1,16 @@
+# Synthetic. Every name and detail in this Call is invented.
+call_id: CALL-0002
+started_at: "2026-11-03T14:52:00+11:00"
+representative: REP-0562
+utterances:
+  - {sequence: 1, speaker: SYSTEM, text: "Thank you for calling Example Bank. This call is recorded for quality and training purposes."}
+  - {sequence: 2, speaker: REPRESENTATIVE, text: "Example Bank, how can I help?"}
+  - {sequence: 3, speaker: CUSTOMER, text: "I want to know my balance. And honestly I'm fed up, this is the third time I've called about a fee you keep charging me."}
+  - {sequence: 4, speaker: REPRESENTATIVE, text: "Sure. What's the account number?"}
+  - {sequence: 5, speaker: CUSTOMER, text: "It ends in four four two."}
+  - {sequence: 6, speaker: REPRESENTATIVE, text: "Okay, I've got it. Your balance is one thousand two hundred and six dollars, and the fee was charged again on Monday."}
+  - {sequence: 7, speaker: CUSTOMER, text: "That's exactly what I mean. Nobody has fixed it and I'm really not happy."}
+  - {sequence: 8, speaker: REPRESENTATIVE, text: "I understand. I'll refund the fee now and it will show on the account within two business days."}
+  - {sequence: 9, speaker: CUSTOMER, text: "Fine. Thanks."}
+  - {sequence: 10, speaker: REPRESENTATIVE, text: "Anything else?"}
+  - {sequence: 11, speaker: CUSTOMER, text: "No."}

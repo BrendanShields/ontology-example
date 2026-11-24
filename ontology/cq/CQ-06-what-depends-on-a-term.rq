@@ -1,0 +1,13 @@
+# CQ-06: What depends on a term?
+# bind: term
+#
+# The impact of changing a term's meaning: every Requirement that uses it, with
+# the Tasks that implement and the Tests that verify each one.
+PREFIX wf: <https://bank.example/ontology/workflow/>
+
+SELECT ?term ?requirement ?task ?test WHERE {
+  ?requirement a wf:Requirement ; wf:uses_terms ?term .
+  OPTIONAL { ?task wf:implements ?requirement }
+  OPTIONAL { ?test wf:verifies ?requirement }
+}
+ORDER BY ?requirement ?task ?test

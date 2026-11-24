@@ -1,0 +1,19 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.hypothesis/
+*.egg-info/
+dist/
+
+# Derived by the ontology tooling, never committed:
+# evidence is recorded by a test run, provenance bundles are built from it in CI.
+work/evidence/
+prov/*.ttl
+
+# Types the Claude Code engine writes into a mod folder when it loads the mod
+mods/*/.claude-plugin/types/
+
+.DS_Store

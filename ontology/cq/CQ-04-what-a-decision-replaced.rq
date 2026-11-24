@@ -1,0 +1,12 @@
+# CQ-04: What did a Decision replace, all the way back?
+# bind: decision
+#
+# Follows prov:wasRevisionOf as far as it goes, newest first.
+PREFIX wf:   <https://bank.example/ontology/workflow/>
+PREFIX prov: <http://www.w3.org/ns/prov#>
+
+SELECT ?decision ?earlier ?title WHERE {
+  ?decision prov:wasRevisionOf+ ?earlier .
+  ?earlier wf:title ?title .
+}
+ORDER BY DESC(?earlier)

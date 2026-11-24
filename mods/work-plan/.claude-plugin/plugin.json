@@ -1,0 +1,7 @@
+{
+  "name": "work-plan",
+  "version": "0.1.0",
+  "description": "A pane for the plan: the playbook steps Claude copied into its task list, the open tasks in dependency order, requirements by status, the decisions in force and open ontology change requests.",
+  "author": { "name": "ontology-example" },
+  "types": "./types/index.d.ts"
+}

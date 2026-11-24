@@ -1,0 +1,46 @@
+# Workspace root. Nothing is published from here: it only ties the members
+# together and holds the tooling configuration shared by the whole monorepo.
+[project]
+name = "ontology-example"
+version = "0.1.0"
+description = "Example monorepo: ontology-driven development of a call quality assurance agent"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = ["apps/*", "packages/*"]
+
+[tool.uv.sources]
+onto-cli = { workspace = true }
+call-qa-agent = { workspace = true }
+
+[dependency-groups]
+dev = [
+    "onto-cli[gen]",
+    "call-qa-agent",
+    "pytest>=8",
+    "hypothesis>=6",
+    "ruff>=0.6",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["packages/onto/tests", "apps/call-qa-agent/tests", "ontology/cq"]
+addopts = "--import-mode=importlib -q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+# Generated from the ontology by `onto gen`: never formatted or edited by hand.
+extend-exclude = ["apps/call-qa-agent/src/call_qa_agent/generated.py"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM"]
+
+[tool.ruff.lint.per-file-ignores]
+# An assertion reads best on one line, even a long one.
+"**/tests/**" = ["E501"]
+"ontology/cq/test_*.py" = ["E501"]

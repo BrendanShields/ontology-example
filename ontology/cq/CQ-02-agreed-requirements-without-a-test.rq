@@ -1,0 +1,12 @@
+# CQ-02: Which agreed Requirements have no Test?
+#
+# A question about absence. A search over text cannot answer it, because there
+# is nothing to find: only the complete set of Requirements can show a gap.
+PREFIX wf: <https://bank.example/ontology/workflow/>
+
+SELECT ?requirement ?status ?title WHERE {
+  ?requirement a wf:Requirement ; wf:status ?status ; wf:title ?title .
+  FILTER (?status IN ("ready", "in_progress", "done"))
+  FILTER NOT EXISTS { ?test wf:verifies ?requirement }
+}
+ORDER BY ?requirement

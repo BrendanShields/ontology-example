@@ -1,0 +1,68 @@
+# The same gates the hooks run, on everything, where nobody can skip them.
+#
+# In a regulated organisation, pin each action to a commit SHA and run this on
+# your own runners. The tags below are for readability.
+name: ontology gates
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    # Weekly drift check: nothing merged, but generators and dependencies move.
+    - cron: "17 19 * * 0"
+
+permissions:
+  contents: read
+
+jobs:
+  gates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # `--scope branch` compares with the base branch
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install
+        run: |
+          pip install uv
+          uv sync --locked
+
+      - name: Generated artefacts match the ontology
+        run: bin/onto gen --check
+
+      - name: Work items and glossaries are valid
+        run: bin/onto validate
+
+      - name: Domain layers use glossary vocabulary
+        run: bin/onto check-terms
+
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Tests and competency questions, recording evidence
+        run: uv run pytest --onto-evidence
+
+      - name: Traceability and graph gates
+        run: bin/onto trace
+
+      - name: Vendored workflow files match their pinned commit
+        run: uv run python tools/check_vendored.py
+
+      - name: Provenance bundle per change
+        if: always()
+        run: bin/onto prov emit
+
+      - name: Keep the evidence and the provenance
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: provenance-${{ github.sha }}
+          path: |
+            prov/
+            work/evidence/
+          if-no-files-found: ignore

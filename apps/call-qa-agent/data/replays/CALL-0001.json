@@ -1,0 +1,13 @@
+{
+  "note": "Hand-written tool calls standing in for the model. Not model output.",
+  "call": "CALL-0001",
+  "steps": [
+    {"tool": "record_finding", "input": {"criterion": "greeting", "finding_outcome": "MET", "cited_utterances": [2], "rationale": "The Representative says good morning and gives her first name."}},
+    {"tool": "record_finding", "input": {"criterion": "recording-notice", "finding_outcome": "MET", "cited_utterances": [1], "rationale": "A recorded announcement says the call is recorded."}},
+    {"tool": "record_finding", "input": {"criterion": "identity-verified", "finding_outcome": "MET", "cited_utterances": [4, 5, 6, 7, 8], "rationale": "Name, date of birth and postcode are checked before the account is discussed."}},
+    {"tool": "record_finding", "input": {"criterion": "request-confirmed", "finding_outcome": "MET", "cited_utterances": [8, 9], "rationale": "The Representative restates the missing payment and the customer confirms it."}},
+    {"tool": "record_finding", "input": {"criterion": "request-resolved", "finding_outcome": "MET", "cited_utterances": [10], "rationale": "The Representative explains the delay and says when the payment will arrive."}},
+    {"tool": "record_finding", "input": {"criterion": "complaint-handled", "finding_outcome": "NOT_APPLICABLE", "cited_utterances": [], "rationale": "The customer expresses no dissatisfaction at any point."}},
+    {"tool": "finish_evaluation", "input": {}}
+  ]
+}

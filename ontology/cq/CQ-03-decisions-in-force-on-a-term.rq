@@ -1,0 +1,17 @@
+# CQ-03: Which Decisions about a term are still in force?
+# bind: term
+#
+# A Decision is in force when it has been decided and no later decided Decision
+# supersedes it. The superseded ones still match the words of the question,
+# which is why they have to be excluded by their links, not by their text.
+PREFIX wf:   <https://bank.example/ontology/workflow/>
+PREFIX prov: <http://www.w3.org/ns/prov#>
+
+SELECT ?term ?decision ?title WHERE {
+  ?decision a wf:Decision ; wf:uses_terms ?term ; wf:title ?title ; wf:status "done" .
+  FILTER NOT EXISTS {
+    ?later prov:wasRevisionOf ?decision ; wf:status ?decided .
+    FILTER (?decided IN ("done", "superseded"))
+  }
+}
+ORDER BY ?decision

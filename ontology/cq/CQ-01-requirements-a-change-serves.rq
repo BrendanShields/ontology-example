@@ -1,0 +1,14 @@
+# CQ-01: Which Requirements does a Change serve?
+# bind: change
+#
+# Three hops no single file holds: a Change resolves Tasks, a Task implements
+# Requirements. This is the question a reviewer starts from.
+PREFIX wf: <https://bank.example/ontology/workflow/>
+
+SELECT ?change ?task ?requirement ?status ?risk WHERE {
+  ?change wf:resolves ?task .
+  ?task wf:implements ?requirement .
+  ?requirement wf:status ?status .
+  OPTIONAL { ?requirement wf:risk_tier ?risk }
+}
+ORDER BY ?requirement

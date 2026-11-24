@@ -1,0 +1,7 @@
+{
+  "name": "ontology-map",
+  "version": "0.1.0",
+  "description": "A pane for browsing the ontology: each bounded context's classes, enums and denied synonyms, and how the workflow classes link. Reads `bin/onto view`.",
+  "author": { "name": "ontology-example" },
+  "types": "./types/index.d.ts"
+}

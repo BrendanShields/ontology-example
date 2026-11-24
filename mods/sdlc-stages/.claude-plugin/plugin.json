@@ -1,0 +1,7 @@
+{
+  "name": "sdlc-stages",
+  "version": "0.1.0",
+  "description": "A pane and a band showing which SDLC stage each task is at, and the gate that guards it. Reads `bin/onto view`.",
+  "author": { "name": "ontology-example" },
+  "types": "./types/index.d.ts"
+}

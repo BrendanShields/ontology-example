@@ -1,0 +1,17 @@
+{
+  "note": "Hand-written tool calls standing in for the model. Not model output. Four of them break a rule on purpose, to show the Rejection each rule answers with.",
+  "call": "CALL-0002",
+  "steps": [
+    {"tool": "record_finding", "input": {"criterion": "greeting", "finding_outcome": "NOT_MET", "cited_utterances": [2], "rationale": "The Representative answers with the bank's name only and never gives their own."}},
+    {"tool": "record_finding", "input": {"criterion": "recording-notice", "finding_outcome": "MET", "cited_utterances": [1], "rationale": "A recorded announcement says the call is recorded."}},
+    {"tool": "record_finding", "input": {"criterion": "id-check", "finding_outcome": "NOT_MET", "cited_utterances": [4, 5, 6], "rationale": "The balance is read out after only the last digits of the account number were given."}},
+    {"tool": "record_finding", "input": {"criterion": "identity-verified", "finding_outcome": "NOT_MET", "cited_utterances": [4, 5, 6], "rationale": "The balance is read out after only the last digits of the account number were given."}},
+    {"tool": "record_finding", "input": {"criterion": "request-confirmed", "finding_outcome": "NOT_MET", "cited_utterances": [], "rationale": "The Representative goes straight to the account without restating the request."}},
+    {"tool": "record_finding", "input": {"criterion": "request-confirmed", "finding_outcome": "NOT_MET", "cited_utterances": [3, 4], "rationale": "The Representative goes straight to the account without restating the request."}},
+    {"tool": "record_finding", "input": {"criterion": "request-resolved", "finding_outcome": "MET", "cited_utterances": [6, 8, 14], "rationale": "The balance is given and the fee is refunded with a timeframe."}},
+    {"tool": "record_finding", "input": {"criterion": "request-resolved", "finding_outcome": "MET", "cited_utterances": [6, 8], "rationale": "The balance is given and the fee is refunded with a timeframe."}},
+    {"tool": "finish_evaluation", "input": {}},
+    {"tool": "record_finding", "input": {"criterion": "complaint-handled", "finding_outcome": "NOT_MET", "cited_utterances": [3, 7, 8], "rationale": "The customer says twice that they are unhappy. The Representative acknowledges it but never offers to record a complaint."}},
+    {"tool": "finish_evaluation", "input": {}}
+  ]
+}

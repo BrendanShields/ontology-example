@@ -1,0 +1,349 @@
+# L2 — domain ontology of the "call-qa" bounded context (apps/call-qa-agent).
+#
+# This file is the single source of the context's ubiquitous language. Every
+# class, slot, enum and permissible value below is a glossary *term*: its name is
+# the only name requirements and domain-layer code may use for that concept.
+#
+#   description          the definition shown to people and to agents (`onto slice`)
+#   aliases              other spellings that *resolve* to the term (`onto resolve`)
+#   annotations
+#     classification     PII | confidential | internal | public (default: internal)
+#     denied_synonyms    names that must NOT be used; `onto check-terms` blocks them
+#   close_mappings       pointers into external vocabularies. Mapped, never imported.
+#
+# `onto gen` compiles it into the Pydantic types and the JSON Schema that the app
+# uses at runtime (apps/call-qa-agent/src/call_qa_agent/generated.py and
+# schemas/call-qa.schema.json).
+#
+# Change it only through an OntologyChangeRequest: see .claude/skills/ontology-change.
+id: https://bank.example/ontology/call-qa
+name: call-qa
+title: Call quality assurance glossary (L2)
+description: >-
+  Ubiquitous language of call quality assurance: Calls are evaluated against a
+  Scorecard, one Finding per Criterion, and the Findings determine the score,
+  the outcome and whether a person must review the Evaluation.
+version: 0.1.0
+
+prefixes:
+  linkml: https://w3id.org/linkml/
+  qa: https://bank.example/ontology/call-qa/
+  # Both schema.org classes below were checked against schemaorg/schemaorg (data/schema.ttl).
+  sdo: https://schema.org/
+default_prefix: qa
+default_range: string
+
+imports:
+  - linkml:types
+
+classes:
+  Call:
+    description: >-
+      One recorded conversation between a customer and a Representative, held
+      as its Utterances in the order they were spoken.
+    close_mappings:
+      - sdo:Conversation
+    annotations:
+      classification: PII
+    slots:
+      - call_id
+      - started_at
+      - representative
+      - utterances
+
+  Utterance:
+    description: >-
+      One uninterrupted stretch of speech by one Speaker in a Call. Utterances
+      are numbered from 1 in the order they were spoken.
+    aliases:
+      - turn
+    close_mappings:
+      - sdo:Message
+    annotations:
+      classification: PII
+      denied_synonyms: [Segment]
+    slots:
+      - sequence
+      - speaker
+      - text
+
+  Representative:
+    description: The bank employee who handles a Call.
+    aliases:
+      - rep
+    annotations:
+      classification: PII
+      denied_synonyms: [Agent, Advisor]
+    slots:
+      - representative_id
+
+  Scorecard:
+    description: >-
+      The list of Criteria that Calls of one kind are evaluated against,
+      together with the pass mark an Evaluation has to reach.
+    aliases:
+      - QA form
+    annotations:
+      denied_synonyms: [Rubric, EvaluationForm]
+    slots:
+      - scorecard_id
+      - criteria
+      - pass_mark
+
+  Criterion:
+    description: >-
+      One thing a Representative is expected to do on a Call, worded so that a
+      Call either meets it or does not.
+    aliases:
+      - scorecard question
+    slots:
+      - criterion_id
+      - statement
+      - weight
+      - critical
+
+  Evaluation:
+    description: >-
+      The assessment of one Call against one Scorecard: exactly one Finding per
+      Criterion, and the score, outcome and disposition that follow from them.
+    annotations:
+      classification: confidential
+      denied_synonyms: [Assessment]
+    slots:
+      - call
+      - scorecard
+      - findings
+      - score
+      - evaluation_outcome
+      - disposition
+
+  Finding:
+    description: >-
+      The judgement of one Criterion for one Call: whether the Call met it, the
+      Utterances cited in support and a short rationale.
+    annotations:
+      classification: confidential
+      denied_synonyms: [Verdict]
+    slots:
+      - criterion
+      - finding_outcome
+      - cited_utterances
+      - rationale
+    slot_usage:
+      criterion:
+        required: true
+
+  Rejection:
+    description: >-
+      The refusal to record a proposed Finding, or to complete an Evaluation,
+      because it breaks a rule. It names the rule and says what would have
+      been accepted, so that the proposer can correct itself.
+    slots:
+      - rejection_rule
+      - criterion
+      - detail
+      - allowed_values
+
+slots:
+  call_id:
+    identifier: true
+    description: The unique identifier of a Call.
+    pattern: "^CALL-\\d{4}$"
+  started_at:
+    description: When a Call began.
+    range: datetime
+  representative:
+    description: The Representative who handled a Call.
+    range: Representative
+    required: true
+    annotations:
+      classification: PII
+  utterances:
+    description: The Utterances of a Call, in the order they were spoken.
+    range: Utterance
+    multivalued: true
+    inlined_as_list: true
+    required: true
+    minimum_cardinality: 1
+
+  sequence:
+    description: The position of an Utterance in its Call, counted from 1.
+    range: integer
+    minimum_value: 1
+    required: true
+  speaker:
+    description: Who spoke an Utterance.
+    range: Speaker
+    required: true
+  text:
+    description: The words of an Utterance, as transcribed.
+    required: true
+    annotations:
+      classification: PII
+
+  representative_id:
+    identifier: true
+    description: The bank's identifier for a Representative.
+    pattern: "^REP-\\d{4}$"
+    annotations:
+      classification: PII
+
+  scorecard_id:
+    identifier: true
+    description: The unique identifier of a Scorecard, including its version.
+    pattern: "^[a-z][a-z0-9-]*-v\\d+$"
+  criteria:
+    description: The Criteria of a Scorecard.
+    range: Criterion
+    multivalued: true
+    inlined_as_list: true
+    required: true
+    minimum_cardinality: 1
+  pass_mark:
+    description: The lowest score at which an Evaluation passes.
+    aliases:
+      - pass mark
+    range: integer
+    minimum_value: 0
+    maximum_value: 100
+    required: true
+
+  criterion_id:
+    identifier: true
+    description: The identifier of a Criterion.
+    pattern: "^[a-z][a-z0-9-]*$"
+  statement:
+    description: The wording of a Criterion.
+    required: true
+  weight:
+    description: >-
+      How much a Criterion counts towards the score, relative to the other
+      Criteria of its Scorecard.
+    range: integer
+    minimum_value: 1
+    required: true
+  critical:
+    description: >-
+      Whether failing this Criterion fails the whole Evaluation, whatever the
+      score. Absent means false.
+    range: boolean
+
+  call:
+    description: The Call an Evaluation assesses.
+    range: Call
+    required: true
+  scorecard:
+    description: The Scorecard an Evaluation applies.
+    range: Scorecard
+    required: true
+  findings:
+    description: The Findings of an Evaluation, one per Criterion of its Scorecard.
+    range: Finding
+    multivalued: true
+    inlined_as_list: true
+    required: true
+  score:
+    description: >-
+      The weight of the Criteria a Call met, as a whole-number percentage of
+      the weight of the Criteria that applied to it.
+    range: integer
+    minimum_value: 0
+    maximum_value: 100
+    required: true
+    annotations:
+      classification: confidential
+  evaluation_outcome:
+    description: Whether an Evaluation passed.
+    range: EvaluationOutcome
+    required: true
+  disposition:
+    description: Whether an Evaluation stands as it is or must be reviewed by a person first.
+    range: Disposition
+    required: true
+
+  criterion:
+    description: The Criterion a Finding judges or a Rejection is about.
+    range: Criterion
+  finding_outcome:
+    description: Whether the Call met the Criterion.
+    range: FindingOutcome
+    required: true
+  cited_utterances:
+    description: >-
+      The sequence numbers of the Utterances a Finding relies on. In this
+      context "evidence" is not used for them: in the workflow ontology
+      Evidence means the result of a test run.
+    aliases:
+      - citations
+    range: integer
+    multivalued: true
+    # No minimum_value here: gen-pydantic (LinkML 1.12) turns it into a bound on
+    # the list itself, which fails on every value. The UNKNOWN_UTTERANCE rule
+    # covers out-of-range numbers instead.
+    annotations:
+      denied_synonyms: [evidence]
+  rationale:
+    description: One or two sentences on why a Finding has its outcome.
+    required: true
+    annotations:
+      classification: confidential
+
+  rejection_rule:
+    description: The rule a Rejection reports as broken.
+    range: RejectionRule
+    required: true
+  detail:
+    description: What was wrong, in words the proposer can act on.
+    required: true
+  allowed_values:
+    description: The values that would have been accepted, where they form a closed set.
+    multivalued: true
+
+enums:
+  Speaker:
+    description: Who can speak an Utterance.
+    permissible_values:
+      REPRESENTATIVE:
+        description: The Representative handling the Call.
+      CUSTOMER:
+        description: The person the bank is serving on the Call.
+      SYSTEM:
+        description: A recorded announcement, such as the notice that the Call is recorded.
+  FindingOutcome:
+    description: The possible outcomes of a Finding.
+    permissible_values:
+      MET:
+        description: The Call met the Criterion.
+      NOT_MET:
+        description: The Criterion applied to the Call and the Call did not meet it.
+      NOT_APPLICABLE:
+        description: The Criterion did not apply to the Call. It counts neither for nor against the score.
+  EvaluationOutcome:
+    description: The possible outcomes of an Evaluation.
+    permissible_values:
+      PASS:
+        description: The score reached the pass mark and no critical Criterion was failed.
+      FAIL:
+        description: The score is below the pass mark, or a critical Criterion was failed.
+  Disposition:
+    description: What happens to an Evaluation once it is complete.
+    permissible_values:
+      FINAL:
+        description: The Evaluation stands without review.
+      NEEDS_REVIEW:
+        description: A person must review the Evaluation before it is used.
+  RejectionRule:
+    description: The rules a proposed Finding or an Evaluation can break.
+    permissible_values:
+      MALFORMED_FINDING:
+        description: The proposal is not a well-formed Finding.
+      UNKNOWN_CRITERION:
+        description: The Finding names a Criterion that is not in the Scorecard.
+      DUPLICATE_FINDING:
+        description: A Finding for this Criterion has already been recorded.
+      UNKNOWN_UTTERANCE:
+        description: The Finding cites an Utterance that is not in the Call.
+      MISSING_CITATION:
+        description: The Finding is MET or NOT_MET and cites no Utterance.
+      MISSING_FINDING:
+        description: A Criterion of the Scorecard has no Finding.

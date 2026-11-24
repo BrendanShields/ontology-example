@@ -1,0 +1,17 @@
+# Who must approve a change to each part of the ontology layer.
+#
+# This file is a template: the lines are commented out because the teams do not
+# exist. Replace the handles with real ones and remove the leading "# ".
+# The pull request review these lines require is the actual control on the
+# ontology. The guard hook is only a reminder.
+
+# The workflow ontology and the gates are shared by every app.
+# /ontology/workflow.yaml          @your-org/ai-enablement
+# /ontology/shapes/                @your-org/ai-enablement
+# /packages/onto/                  @your-org/ai-enablement
+# /.claude/                        @your-org/ai-enablement
+# /mods/                           @your-org/ai-enablement
+
+# Each bounded context's glossary belongs to the people who own its language.
+# /ontology/domains/call-qa.yaml   @your-org/call-quality-leads
+# /ontology/cq/                    @your-org/call-quality-leads @your-org/ai-enablement

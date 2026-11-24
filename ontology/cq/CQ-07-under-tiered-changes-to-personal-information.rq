@@ -1,0 +1,13 @@
+# CQ-07: Which Changes touch a term classified PII without a high or critical risk tier?
+# expect: none
+#
+# Every row is a Change that would get less review than its data calls for.
+PREFIX wf: <https://bank.example/ontology/workflow/>
+
+SELECT ?change ?requirement ?term WHERE {
+  ?change a wf:Change ; wf:resolves/wf:implements ?requirement .
+  ?requirement wf:uses_terms ?term .
+  ?term wf:classification "PII" .
+  FILTER NOT EXISTS { ?requirement wf:risk_tier ?tier . FILTER (?tier IN ("high", "critical")) }
+}
+ORDER BY ?change ?requirement ?term

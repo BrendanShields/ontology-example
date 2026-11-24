@@ -1,0 +1,12 @@
+# CQ-05: Which Requirements are about personal information, and at what risk tier?
+#
+# The classification belongs to the glossary term, the risk tier to the
+# Requirement. The answer has to be the complete set, not the likeliest few.
+PREFIX wf: <https://bank.example/ontology/workflow/>
+
+SELECT ?requirement ?term ?risk WHERE {
+  ?requirement a wf:Requirement ; wf:uses_terms ?term .
+  ?term wf:classification "PII" .
+  OPTIONAL { ?requirement wf:risk_tier ?risk }
+}
+ORDER BY ?requirement ?term
