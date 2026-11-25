@@ -48,6 +48,9 @@ _OUT_OF_TURNS = '    raise EvaluationIncomplete(\n        f"the model did not'
 _EVALUATION_RETURNED = _ANSWERED + "        if session.evaluation is not None:\n            return session.evaluation"
 _CONCLUDED = "self.evaluation = scoring.conclude(self.call, self.scorecard, self.findings)"
 _UNCITED = "[f.model_copy(update={'cited_utterances': None}) for f in findings],"
+_RECITED = "model_copy(update={'cited_utterances': [2]})"
+_IF_ACCEPTED = "        if not rejections:\n            self.findings.append(finding)"
+_OUTSTANDING = "        rejections = self.outstanding()\n"
 _RECORDED_UNCITED = "self.findings.append(finding.model_copy(update={'cited_utterances': []}))"
 
 MUTANTS = [
@@ -65,6 +68,7 @@ MUTANTS = [
     Mutant("evaluation-from-any-findings", _SCORING, "    if judged != sorted(criterion.criterion_id for criterion in scorecard.criteria):", "    if False:", "scoring", "S7"),
     Mutant("duplicate-findings-concluded", _SCORING, "    judged = sorted(finding.criterion for finding in findings)", "    judged = sorted({finding.criterion for finding in findings})", "scoring", "S7"),
     Mutant("rejected-finding-recorded", "session.py", "        if not rejections:\n            self.findings.append(finding)", "        self.findings.append(finding)", "session", "G1"),
+    Mutant("rejected-proposal-changes-a-citation", "session.py", _IF_ACCEPTED, "        if rejections and self.findings:\n            self.findings[0] = self.findings[0]." + _RECITED + "\n" + _IF_ACCEPTED, "session", "G1"),
     Mutant("finding-recorded-first", "session.py", "self.findings.append(finding)", "self.findings.insert(0, finding)", "session", "G2"),
     Mutant("finding-recorded-without-citations", "session.py", "self.findings.append(finding)", _RECORDED_UNCITED, "session", "G2"),
     Mutant("duplicate-finding-recorded", _GUARDRAILS, "elif any(existing.criterion == finding.criterion for existing in recorded):", "elif False:", "session", "G3"),
@@ -75,6 +79,7 @@ MUTANTS = [
     Mutant("rejection-names-another-criterion", _GUARDRAILS, "rejection_rule=RejectionRule.DUPLICATE_FINDING,\n                criterion=finding.criterion,", "rejection_rule=RejectionRule.DUPLICATE_FINDING,\n                criterion='zz',", "session", "G3"),
     Mutant("finish-ignores-missing", _GUARDRAILS, "if criterion.criterion_id not in judged", "if False", "session", "G4"),
     Mutant("evaluation-without-all-findings", "session.py", "if not rejections and self.evaluation is None:", "if self.evaluation is None:", "session", "G4"),
+    Mutant("finish-changes-the-citations", "session.py", _OUTSTANDING, _OUTSTANDING + "        self.findings[:] = [f." + _RECITED + " for f in self.findings]\n", "session", "G4"),
     Mutant("missing-finding-misnamed", _GUARDRAILS, "rejection_rule=RejectionRule.MISSING_FINDING", "rejection_rule=RejectionRule.MISSING_CITATION", "session", "G5"),
     Mutant("evaluation-loses-a-finding", "session.py", _CONCLUDED, _CONCLUDED + "\n            self.evaluation = self.evaluation.model_copy(update={'findings': self.findings[1:]})", "session", "G6"),
     Mutant("concluded-evaluation-loses-citations", _SCORING, "findings=findings,", "findings=" + _UNCITED, "session", "G6"),
