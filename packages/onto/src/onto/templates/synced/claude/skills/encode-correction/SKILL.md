@@ -31,7 +31,7 @@ Why this order: a higher rung fails earlier and cannot be skipped. A type refuse
 - Take the rung above if it can hold the rule at all, even when the rung below is quicker to write.
 - A rule that needs more than one line of CLAUDE.md usually belongs on a higher rung. Go back to step 3.
 - A blocking check must be exact. If deciding the rule takes judgement, it is a warning or a review question, not a gate.
-- Per-edit hooks stay under about half a second. A slower check goes into `make check` and the Stop gate.
+- Per-edit hooks stay under about half a second. A slower check goes into the gates CI runs and the Stop gate.
 - When the gate itself was wrong, that is a correction too. Fix the gate through this same ladder. Never loosen one to get past it.
 - `ontology/` changes only through a request. A correction does not shorten that route.
 

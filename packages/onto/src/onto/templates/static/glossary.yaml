@@ -9,6 +9,10 @@
 #   annotations
 #     classification     PII | confidential | internal | public (default: internal)
 #     denied_synonyms    names that must not be used; `onto check-terms` blocks them
+#     binding            rule (an enum or a value) | computed (a slot): `onto rules` holds
+#                        the term to a function that produces it and to a Requirement,
+#                        verified by a passing Test, that uses it. The first binding also
+#                        needs `bindings_json` under [contexts.{{context}}] in onto.toml
 #
 # `onto gen` compiles it into the Pydantic types and the JSON Schema named under
 # [contexts.{{context}}] in onto.toml.

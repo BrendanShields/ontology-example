@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import re
 import shutil
 from pathlib import Path
 
@@ -65,6 +66,40 @@ def test_a_skill_installed_from_elsewhere_is_no_template(sync, tmp_path, monkeyp
     monkeypatch.setattr(sync, "installed_skills", lambda: (".claude/skills/term-gap/",))
     assert not [rel for rel in sync.sources() if "/term-gap/" in rel]
     assert [rel for rel in sync.sources() if "/ontology-change/" in rel]
+
+
+def test_every_skill_and_agent_has_frontmatter_a_strict_parser_reads(sync):
+    import yaml
+
+    files = [
+        rel
+        for rel in sync.sources()
+        if (rel.endswith("/SKILL.md") or rel.startswith(".claude/agents/"))
+        and not rel.startswith(sync.VERBATIM)
+    ]
+    assert len(files) > 10
+    for rel in files:
+        _, written, _ = (ROOT / rel).read_text(encoding="utf-8").split("---\n", 2)
+        meta = yaml.safe_load(written)  # a `: ` in an unquoted description stops this
+        name = rel.split("/")[-2] if rel.endswith("/SKILL.md") else Path(rel).stem
+        assert meta["name"] == name and meta["description"].strip(), rel
+
+
+def test_no_scaffolded_skill_names_a_make_target_onto_init_does_not_write(sync):
+    tree, _ = sync.build()
+    targets = {"onto-gen", "onto-check", "onto-view"}
+    assert all(
+        f"\n{target}:" in (ROOT / scaffold_static("onto.mk")).read_text() for target in targets
+    )
+    for rel, data in tree.items():
+        if rel.startswith("claude/pstack/upstream/") or not rel.endswith(".md"):
+            continue
+        for found in re.findall(r"`make ([a-z-]+)`", data.decode()):
+            assert found in targets, f"{rel} names `make {found}`"
+
+
+def scaffold_static(name: str) -> str:
+    return f"packages/onto/src/onto/templates/static/{name}"
 
 
 def test_the_hooks_template_runs_onto_through_the_placeholder_only(sync):

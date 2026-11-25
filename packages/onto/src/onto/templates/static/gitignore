@@ -1,4 +1,5 @@
 # Derived by the ontology tooling, never committed:
-# evidence is recorded by a test run, provenance bundles are built from it in CI.
+# evidence is recorded by a test run, provenance bundles are built from it in CI, and `onto verify` writes its index.
 work/evidence/
 prov/*.ttl
+prov/verify.json

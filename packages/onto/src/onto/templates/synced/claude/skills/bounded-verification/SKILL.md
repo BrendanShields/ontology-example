@@ -1,6 +1,7 @@
 ---
 name: bounded-verification
-description: Use when a guarded write path, a state machine in one process, or a pure rule function (scoring, pricing, eligibility) must hold for every input, not only the examples someone thought of. Runs the real code over every case within a stated bound, with mutants that each check must catch, wired to the Requirements as a Test item. Not for concurrency or liveness: use a model checker there.
+description: >-
+  Use when a guarded write path, a state machine in one process, or a pure rule function (scoring, pricing, eligibility) must hold for every input, not only the examples someone thought of. Runs the real code over every case within a stated bound, with mutants that each check must catch, wired to the Requirements as a Test item. Not for concurrency or liveness: use a model checker there.
 allowed-tools: Read, Grep, Glob, Edit, Write, Bash
 ---
 
@@ -33,7 +34,7 @@ The worked example is the `tests/bounded/` folder of the example app in the repo
    - Assert the text occurs exactly once. A mutant that stops applying means the guarded line changed, and a person must look again.
    - Assert the property named is the one reported, and that an untouched copy reports nothing.
    - A property no mutant can reach before another reports it is not a check. Remove it or fold it into the one that fires.
-   - Mark these nodes (`@pytest.mark.mutants`) so a fast run can pass `-m 'not mutants'`. `make check` and CI run them.
+   - Mark these nodes (`@pytest.mark.mutants`) so a fast run can pass `-m 'not mutants'`. The full run of the gates and CI run them.
 9. Wire it to the Requirements. For each node run `{{onto_cmd}} new Test title=... status=done bounded_context=<context> verifies=<REQ ids> path=<pytest node id>`, then write the bound in the body of the item in plain words. Run `uv run pytest --onto-evidence` and `{{onto_cmd}} trace`: each Requirement must show the new Test as `pass`.
 10. If the object has states worth drawing, generate the diagram from the runs and commit it, with a test that fails when the committed file and the code disagree. Label arrows from what the runs returned, not from the script that drove them.
 

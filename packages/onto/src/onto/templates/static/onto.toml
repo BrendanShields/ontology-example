@@ -33,3 +33,5 @@ domain_paths = ["{{domain_path}}"]
 pydantic = "{{code_dir}}/generated.py"
 json_schema = "{{code_dir}}/schemas/{{context}}.schema.json"
 glossary_json = "{{code_dir}}/schemas/{{context}}.glossary.json"
+# Written only once the glossary declares a binding: take the `#` away with the first one.
+# bindings_json = "{{code_dir}}/schemas/{{context}}.bindings.json"
