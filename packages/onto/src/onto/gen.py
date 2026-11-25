@@ -3,6 +3,7 @@
     ontology/workflow.yaml        -> JSON Schema (frontmatter validation)
                                   -> SHACL shapes (graph validation)
     ontology/domains/<ctx>.yaml   -> Pydantic types and JSON Schema for the app
+    either of them                -> a Markdown page for people (see docs.py)
 
 The artefacts are committed. `onto gen --check` regenerates them in memory and
 fails if a committed file differs, so a schema change that was not compiled, or
@@ -19,6 +20,7 @@ from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
+from . import docs
 from .config import Config, Context
 from .glossary import Glossary
 
@@ -48,7 +50,17 @@ def targets(cfg: Config) -> list[Target]:
         Target(cfg.workflow_json_schema, cfg.workflow_schema, _json_schema),
         Target(cfg.workflow_shacl, cfg.workflow_schema, _shacl),
     ]
+    if cfg.workflow_docs is not None:
+        found.append(
+            Target(
+                cfg.workflow_docs,
+                cfg.workflow_schema,
+                docs.renderer("workflow", cfg.workflow_schema),
+            )
+        )
     for ctx in cfg.contexts.values():
+        if ctx.docs is not None:
+            found.append(Target(ctx.docs, ctx.schema, docs.renderer(ctx.name, ctx.schema)))
         if ctx.pydantic is not None:
             found.append(Target(ctx.pydantic, ctx.schema, _pydantic))
         if ctx.json_schema is not None:
