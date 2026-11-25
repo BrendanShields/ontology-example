@@ -19,6 +19,7 @@ classDiagram
         +uri pr_url
     }
     class Decision {
+        +List~string~ affects
         +string decided_by
         +date decided_on
         +string rationale
@@ -31,6 +32,9 @@ classDiagram
         +datetime recorded_at
         +ResultEnum result
         +uri run_url
+    }
+    class Incident {
+        +date observed_on
     }
     class LoggedDecision {
         +string basis
@@ -115,6 +119,7 @@ classDiagram
     Decision --> "0..1" Decision : supersedes
     Entity <|.. Decision
     Entity <|.. Evidence
+    Entity <|.. Incident
     Entity <|.. LoggedDecision
     Entity <|.. OntologyChangeRequest
     Entity <|.. Requirement
@@ -122,9 +127,12 @@ classDiagram
     Entity <|.. Test
     Evidence --> "1" Test : of_test
     Evidence ..> ResultEnum : result
+    Incident --> "*" Requirement : breaks
     LoggedDecision --> "0..1" WorkItem : concerns
     Record <|-- Evidence
     Record <|-- WorkItem
+    Requirement --> "0..1" Incident : raised_from
+    Requirement --> "0..1" Requirement : replaces
     Requirement --> "1..*" Term : uses_terms
     Requirement ..> RiskTierEnum : risk_tier
     Task --> "*" Task : blocked_by
@@ -135,6 +143,7 @@ classDiagram
     WorkItem ..> StatusEnum : status
     WorkItem <|-- Change
     WorkItem <|-- Decision
+    WorkItem <|-- Incident
     WorkItem <|-- OntologyChangeRequest
     WorkItem <|-- Requirement
     WorkItem <|-- Task
@@ -150,6 +159,7 @@ classDiagram
 | `Decision` | class | A choice that constrains later work, with its rationale. A Decision stays in force until another Decision supersedes it. | internal |  |  |
 | `Entity` | class | Something that exists and can be described, used or produced (prov:Entity). | internal |  |  |
 | `Evidence` | class | The recorded result of running one Test. Evidence is derived, never written by hand: `onto evidence collect` produces it from a test run. | internal |  |  |
+| `Incident` | class | Something observed in operation that the system should not have done. An Incident is closed by Requirements: the ones it shows broken are verified again, or a new Requirement is raised from it. | internal |  |  |
 | `LoggedDecision` | class | One line of an agent's decision log: what it decided while working, why and on what basis. Logged decisions are not files under work/. They are rows of .audit/<work item>.tsv, turned into provenance by `onto prov emit`. | internal |  |  |
 | `OntologyChangeRequest` | class | A proposal to add, rename, redefine or retire a glossary Term. It is the only route by which a domain ontology changes, and a person approves it. | internal |  |  |
 | `Record` | class | Anything stored as one file under work/ and identified by its id. | internal |  |  |
@@ -163,10 +173,12 @@ classDiagram
 | `RiskTierEnum` | enum | How much review a change needs. | internal |  |  |
 | `StatusEnum` | enum | The lifecycle shared by all work items. | internal |  |  |
 | `TermKindEnum` | enum |  | internal |  |  |
+| `affects` | slot | Repository path globs a Decision constrains. A Task that touches a matching file is given the Decision with its slice. | internal |  |  |
 | `aliases` | slot | Other spellings that resolve to a Term. | internal |  |  |
 | `basis` | slot | What the decision rests on, such as a file, a command's output or a link. | internal |  |  |
 | `blocked_by` | slot | Tasks that must be done before this one can start. | internal |  |  |
 | `bounded_context` | slot | The bounded context the item belongs to. It selects the glossary its terms are checked against. | internal |  |  |
+| `breaks` | slot | The Requirements an Incident shows broken. | internal |  |  |
 | `classification` | slot | How sensitive the data a Term names is. | internal |  |  |
 | `close_mappings` | slot | Concepts in external vocabularies that are close to a Term. | internal |  |  |
 | `commit_sha` | slot | The commit that was checked out when the Test ran. | internal |  |  |
@@ -184,6 +196,7 @@ classDiagram
 | `jira_key` | slot | The issue this item mirrors in the tracker, if any. | internal |  |  |
 | `justification` | slot | Why the glossary must change, and which requirement needs it. | internal |  |  |
 | `model_id` | slot | The model that agent ran on. | internal |  |  |
+| `observed_on` | slot | The day an Incident was observed. | internal |  |  |
 | `of_test` | slot | The Test whose run this Evidence records. | internal |  |  |
 | `outcome` | slot | What came of the decision, once known. | internal |  |  |
 | `path` | slot | The pytest node id of the Test, relative to the repository root. | internal |  |  |
@@ -191,8 +204,10 @@ classDiagram
 | `pr_url` | slot | The pull request that carries the Change. | internal |  |  |
 | `proposed_definition` | slot | The definition the term should have. | internal |  |  |
 | `proposed_term` | slot | The term the request is about, spelled as it should appear in the glossary. | internal |  |  |
+| `raised_from` | slot | The Incident a Requirement was raised from. | internal |  |  |
 | `rationale` | slot | Why the Decision was made, and what was rejected. | internal |  |  |
 | `recorded_at` | slot | When the record was made. | internal |  |  |
+| `replaces` | slot | The earlier Requirement this one replaces. The earlier one becomes superseded. | internal |  |  |
 | `resolves` | slot | The Tasks a Change resolves. | internal |  |  |
 | `result` | slot | Whether the Test passed. | internal |  |  |
 | `risk_tier` | slot | How much review a change to this Requirement needs. | internal |  |  |
@@ -287,4 +302,5 @@ The lifecycle shared by all work items.
 | `definition` | is | http://www.w3.org/2004/02/skos/core#definition |
 | `exact_mappings` | is | http://www.w3.org/2004/02/skos/core#exactMatch |
 | `recorded_at` | is | http://www.w3.org/ns/prov#generatedAtTime |
+| `replaces` | is | http://www.w3.org/ns/prov#wasRevisionOf |
 | `supersedes` | is | http://www.w3.org/ns/prov#wasRevisionOf |

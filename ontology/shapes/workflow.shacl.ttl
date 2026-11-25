@@ -227,7 +227,7 @@ wf:OntologyChangeRequest a sh:NodeShape ;
 wf:Record a sh:NodeShape ;
     rdfs:comment "Anything stored as one file under work/ and identified by its id." ;
     sh:closed false ;
-    sh:ignoredProperties ( rdf:type prov:generatedAtTime prov:wasRevisionOf wf:blocked_by wf:bounded_context wf:commit_sha wf:decided_by wf:decided_on wf:ears_text wf:generated_by_agent wf:implements wf:jira_key wf:justification wf:model_id wf:of_test wf:path wf:pr_url wf:proposed_definition wf:proposed_term wf:rationale wf:resolves wf:result wf:risk_tier wf:run_url wf:status wf:title wf:uses_terms wf:verifies ) ;
+    sh:ignoredProperties ( rdf:type prov:generatedAtTime prov:wasRevisionOf wf:affects wf:blocked_by wf:bounded_context wf:breaks wf:commit_sha wf:decided_by wf:decided_on wf:ears_text wf:generated_by_agent wf:implements wf:jira_key wf:justification wf:model_id wf:observed_on wf:of_test wf:path wf:pr_url wf:proposed_definition wf:proposed_term wf:raised_from wf:rationale wf:resolves wf:result wf:risk_tier wf:run_url wf:status wf:title wf:uses_terms wf:verifies ) ;
     sh:property [ sh:datatype xsd:string ;
             sh:description "The identifier of a Record. It is also the name of its file." ;
             sh:maxCount 1 ;
@@ -259,52 +259,108 @@ wf:Decision a sh:NodeShape ;
             sh:order 2 ;
             sh:path prov:wasRevisionOf ],
         [ sh:datatype xsd:string ;
+            sh:description "Repository path globs a Decision constrains. A Task that touches a matching file is given the Decision with its slice." ;
+            sh:nodeKind sh:Literal ;
+            sh:order 3 ;
+            sh:path wf:affects ],
+        [ sh:datatype xsd:string ;
             sh:description "Who made the Decision." ;
             sh:maxCount 1 ;
             sh:nodeKind sh:Literal ;
-            sh:order 3 ;
+            sh:order 4 ;
             sh:path wf:decided_by ],
         [ sh:datatype xsd:date ;
             sh:description "The day the Decision was made." ;
             sh:maxCount 1 ;
             sh:nodeKind sh:Literal ;
-            sh:order 4 ;
+            sh:order 5 ;
             sh:path wf:decided_on ],
         [ sh:datatype xsd:string ;
             sh:description "A one-line summary." ;
             sh:maxCount 1 ;
             sh:minCount 1 ;
             sh:nodeKind sh:Literal ;
-            sh:order 5 ;
+            sh:order 6 ;
             sh:path wf:title ],
         [ sh:description "Where the item is in its lifecycle." ;
             sh:in ( "draft" "ready" "in_progress" "done" "superseded" ) ;
             sh:maxCount 1 ;
             sh:minCount 1 ;
-            sh:order 6 ;
+            sh:order 7 ;
             sh:path wf:status ],
         [ sh:datatype xsd:string ;
             sh:description "The bounded context the item belongs to. It selects the glossary its terms are checked against." ;
             sh:maxCount 1 ;
             sh:minCount 1 ;
             sh:nodeKind sh:Literal ;
-            sh:order 7 ;
+            sh:order 8 ;
             sh:path wf:bounded_context ],
         [ sh:datatype xsd:string ;
             sh:description "The issue this item mirrors in the tracker, if any." ;
             sh:maxCount 1 ;
             sh:nodeKind sh:Literal ;
-            sh:order 8 ;
+            sh:order 9 ;
             sh:path wf:jira_key ;
             sh:pattern "^[A-Z][A-Z0-9]+-\\d+$" ],
         [ sh:datatype xsd:string ;
             sh:description "The identifier of a Record. It is also the name of its file." ;
             sh:maxCount 1 ;
             sh:nodeKind sh:Literal ;
-            sh:order 9 ;
+            sh:order 10 ;
             sh:path wf:id ;
             sh:pattern "^DEC-\\d{4}$" ] ;
     sh:targetClass wf:Decision .
+
+wf:Incident a sh:NodeShape ;
+    rdfs:comment "Something observed in operation that the system should not have done. An Incident is closed by Requirements: the ones it shows broken are verified again, or a new Requirement is raised from it." ;
+    sh:closed false ;
+    sh:ignoredProperties ( rdf:type ) ;
+    sh:property [ sh:datatype xsd:date ;
+            sh:description "The day an Incident was observed." ;
+            sh:maxCount 1 ;
+            sh:nodeKind sh:Literal ;
+            sh:order 0 ;
+            sh:path wf:observed_on ],
+        [ sh:class wf:Requirement ;
+            sh:description "The Requirements an Incident shows broken." ;
+            sh:nodeKind sh:IRI ;
+            sh:order 1 ;
+            sh:path wf:breaks ],
+        [ sh:datatype xsd:string ;
+            sh:description "A one-line summary." ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:nodeKind sh:Literal ;
+            sh:order 2 ;
+            sh:path wf:title ],
+        [ sh:description "Where the item is in its lifecycle." ;
+            sh:in ( "draft" "ready" "in_progress" "done" "superseded" ) ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:order 3 ;
+            sh:path wf:status ],
+        [ sh:datatype xsd:string ;
+            sh:description "The bounded context the item belongs to. It selects the glossary its terms are checked against." ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:nodeKind sh:Literal ;
+            sh:order 4 ;
+            sh:path wf:bounded_context ],
+        [ sh:datatype xsd:string ;
+            sh:description "The issue this item mirrors in the tracker, if any." ;
+            sh:maxCount 1 ;
+            sh:nodeKind sh:Literal ;
+            sh:order 5 ;
+            sh:path wf:jira_key ;
+            sh:pattern "^[A-Z][A-Z0-9]+-\\d+$" ],
+        [ sh:datatype xsd:string ;
+            sh:description "The identifier of a Record. It is also the name of its file." ;
+            sh:maxCount 1 ;
+            sh:nodeKind sh:Literal ;
+            sh:order 6 ;
+            sh:path wf:id ;
+            sh:pattern "^INC-\\d{4}$" ] ;
+    sh:targetClass wf:Incident .
 
 wf:Test a sh:NodeShape ;
     rdfs:comment "An automated test that verifies one or more Requirements." ;
@@ -362,7 +418,7 @@ wf:Test a sh:NodeShape ;
 wf:WorkItem a sh:NodeShape ;
     rdfs:comment "A Record that people and agents plan, do and track." ;
     sh:closed false ;
-    sh:ignoredProperties ( rdf:type prov:wasRevisionOf wf:blocked_by wf:decided_by wf:decided_on wf:ears_text wf:generated_by_agent wf:implements wf:justification wf:model_id wf:path wf:pr_url wf:proposed_definition wf:proposed_term wf:rationale wf:resolves wf:risk_tier wf:uses_terms wf:verifies ) ;
+    sh:ignoredProperties ( rdf:type prov:wasRevisionOf wf:affects wf:blocked_by wf:breaks wf:decided_by wf:decided_on wf:ears_text wf:generated_by_agent wf:implements wf:justification wf:model_id wf:observed_on wf:path wf:pr_url wf:proposed_definition wf:proposed_term wf:raised_from wf:rationale wf:resolves wf:risk_tier wf:uses_terms wf:verifies ) ;
     sh:property [ sh:datatype xsd:string ;
             sh:description "A one-line summary." ;
             sh:maxCount 1 ;
@@ -397,64 +453,6 @@ wf:WorkItem a sh:NodeShape ;
             sh:order 4 ;
             sh:path wf:id ] ;
     sh:targetClass wf:WorkItem .
-
-wf:Requirement a sh:NodeShape ;
-    rdfs:comment "One thing the system must do, written as a single EARS sentence and bound to the glossary terms it is about." ;
-    sh:closed false ;
-    sh:ignoredProperties ( rdf:type ) ;
-    sh:property [ sh:datatype xsd:string ;
-            sh:description "The requirement as one EARS sentence (\"When <trigger>, the <system> shall <response>\"). Glossary terms are written in backticks." ;
-            sh:maxCount 1 ;
-            sh:minCount 1 ;
-            sh:nodeKind sh:Literal ;
-            sh:order 0 ;
-            sh:path wf:ears_text ],
-        [ sh:class wf:Term ;
-            sh:description "The glossary Terms this item is about. Each must exist in the item's bounded context." ;
-            sh:minCount 1 ;
-            sh:nodeKind sh:IRI ;
-            sh:order 1 ;
-            sh:path wf:uses_terms ],
-        [ sh:description "How much review a change to this Requirement needs." ;
-            sh:in ( "low" "medium" "high" "critical" ) ;
-            sh:maxCount 1 ;
-            sh:order 2 ;
-            sh:path wf:risk_tier ],
-        [ sh:datatype xsd:string ;
-            sh:description "A one-line summary." ;
-            sh:maxCount 1 ;
-            sh:minCount 1 ;
-            sh:nodeKind sh:Literal ;
-            sh:order 3 ;
-            sh:path wf:title ],
-        [ sh:description "Where the item is in its lifecycle." ;
-            sh:in ( "draft" "ready" "in_progress" "done" "superseded" ) ;
-            sh:maxCount 1 ;
-            sh:minCount 1 ;
-            sh:order 4 ;
-            sh:path wf:status ],
-        [ sh:datatype xsd:string ;
-            sh:description "The bounded context the item belongs to. It selects the glossary its terms are checked against." ;
-            sh:maxCount 1 ;
-            sh:minCount 1 ;
-            sh:nodeKind sh:Literal ;
-            sh:order 5 ;
-            sh:path wf:bounded_context ],
-        [ sh:datatype xsd:string ;
-            sh:description "The issue this item mirrors in the tracker, if any." ;
-            sh:maxCount 1 ;
-            sh:nodeKind sh:Literal ;
-            sh:order 6 ;
-            sh:path wf:jira_key ;
-            sh:pattern "^[A-Z][A-Z0-9]+-\\d+$" ],
-        [ sh:datatype xsd:string ;
-            sh:description "The identifier of a Record. It is also the name of its file." ;
-            sh:maxCount 1 ;
-            sh:nodeKind sh:Literal ;
-            sh:order 7 ;
-            sh:path wf:id ;
-            sh:pattern "^REQ-\\d{4}$" ] ;
-    sh:targetClass wf:Requirement .
 
 wf:Task a sh:NodeShape ;
     rdfs:comment "A unit of work that implements one or more Requirements." ;
@@ -560,3 +558,73 @@ wf:Term a sh:NodeShape ;
             sh:order 8 ;
             sh:path skos:closeMatch ] ;
     sh:targetClass wf:Term .
+
+wf:Requirement a sh:NodeShape ;
+    rdfs:comment "One thing the system must do, written as a single EARS sentence and bound to the glossary terms it is about." ;
+    sh:closed false ;
+    sh:ignoredProperties ( rdf:type ) ;
+    sh:property [ sh:datatype xsd:string ;
+            sh:description "The requirement as one EARS sentence (\"When <trigger>, the <system> shall <response>\"). Glossary terms are written in backticks." ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:nodeKind sh:Literal ;
+            sh:order 0 ;
+            sh:path wf:ears_text ],
+        [ sh:class wf:Term ;
+            sh:description "The glossary Terms this item is about. Each must exist in the item's bounded context." ;
+            sh:minCount 1 ;
+            sh:nodeKind sh:IRI ;
+            sh:order 1 ;
+            sh:path wf:uses_terms ],
+        [ sh:description "How much review a change to this Requirement needs." ;
+            sh:in ( "low" "medium" "high" "critical" ) ;
+            sh:maxCount 1 ;
+            sh:order 2 ;
+            sh:path wf:risk_tier ],
+        [ sh:class wf:Incident ;
+            sh:description "The Incident a Requirement was raised from." ;
+            sh:maxCount 1 ;
+            sh:nodeKind sh:IRI ;
+            sh:order 3 ;
+            sh:path wf:raised_from ],
+        [ sh:class wf:Requirement ;
+            sh:description "The earlier Requirement this one replaces. The earlier one becomes superseded." ;
+            sh:maxCount 1 ;
+            sh:nodeKind sh:IRI ;
+            sh:order 4 ;
+            sh:path prov:wasRevisionOf ],
+        [ sh:datatype xsd:string ;
+            sh:description "A one-line summary." ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:nodeKind sh:Literal ;
+            sh:order 5 ;
+            sh:path wf:title ],
+        [ sh:description "Where the item is in its lifecycle." ;
+            sh:in ( "draft" "ready" "in_progress" "done" "superseded" ) ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:order 6 ;
+            sh:path wf:status ],
+        [ sh:datatype xsd:string ;
+            sh:description "The bounded context the item belongs to. It selects the glossary its terms are checked against." ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:nodeKind sh:Literal ;
+            sh:order 7 ;
+            sh:path wf:bounded_context ],
+        [ sh:datatype xsd:string ;
+            sh:description "The issue this item mirrors in the tracker, if any." ;
+            sh:maxCount 1 ;
+            sh:nodeKind sh:Literal ;
+            sh:order 8 ;
+            sh:path wf:jira_key ;
+            sh:pattern "^[A-Z][A-Z0-9]+-\\d+$" ],
+        [ sh:datatype xsd:string ;
+            sh:description "The identifier of a Record. It is also the name of its file." ;
+            sh:maxCount 1 ;
+            sh:nodeKind sh:Literal ;
+            sh:order 9 ;
+            sh:path wf:id ;
+            sh:pattern "^REQ-\\d{4}$" ] ;
+    sh:targetClass wf:Requirement .

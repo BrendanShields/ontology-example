@@ -125,3 +125,55 @@ gate:SupersededDecisionIsMarked a sh:NodeShape ;
             SELECT $this WHERE {
                 $this prov:wasRevisionOf+ $this .
             }""" ] .
+
+# --- Requirements that change ------------------------------------------------
+# A business rule changes by a new Requirement that replaces the old one. The
+# old one stays in the record as superseded, so "what did this rule use to
+# say?" has an answer, and nothing superseded is left without a successor.
+
+gate:ReplacedRequirementIsMarked a sh:NodeShape ;
+    sh:targetClass wf:Requirement ;
+    sh:sparql [
+        sh:message "Requirement is replaced by {?value}, which is done, but its status is not superseded." ;
+        sh:prefixes gate: ;
+        sh:select """
+            SELECT $this ?value WHERE {
+                ?value a wf:Requirement ; prov:wasRevisionOf $this ; wf:status "done" .
+                $this wf:status ?status .
+                FILTER (?status != "superseded")
+            }""" ] ;
+    sh:sparql [
+        sh:message "Requirement has status superseded but no Requirement replaces it." ;
+        sh:prefixes gate: ;
+        sh:select """
+            SELECT $this WHERE {
+                $this a wf:Requirement ; wf:status "superseded" .
+                FILTER NOT EXISTS { ?later a wf:Requirement ; prov:wasRevisionOf $this }
+            }""" ] .
+
+# --- Incidents ---------------------------------------------------------------
+# An Incident is closed by Requirements, not by saying so: every Requirement it
+# shows broken, and every Requirement raised from it, is done (and so verified
+# by the traceability gate above), and there is at least one of them.
+
+gate:ClosedIncidentIsFixed a sh:NodeShape ;
+    sh:targetClass wf:Incident ;
+    sh:sparql [
+        sh:message "Incident is done but {?value}, which it shows broken or which was raised from it, is not done." ;
+        sh:prefixes gate: ;
+        sh:select """
+            SELECT $this ?value WHERE {
+                $this wf:status "done" .
+                { $this wf:breaks ?value } UNION { ?value wf:raised_from $this }
+                ?value wf:status ?status .
+                FILTER (?status NOT IN ("done", "superseded"))
+            }""" ] ;
+    sh:sparql [
+        sh:message "Incident is done but it names no Requirement it breaks and no Requirement was raised from it." ;
+        sh:prefixes gate: ;
+        sh:select """
+            SELECT $this WHERE {
+                $this a wf:Incident ; wf:status "done" .
+                FILTER NOT EXISTS { $this wf:breaks ?broken }
+                FILTER NOT EXISTS { ?raised wf:raised_from $this }
+            }""" ] .

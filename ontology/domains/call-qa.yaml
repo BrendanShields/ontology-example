@@ -9,6 +9,9 @@
 #   annotations
 #     classification     PII | confidential | internal | public (default: internal)
 #     denied_synonyms    names that must NOT be used; `onto check-terms` blocks them
+#     binding            rule (an enum or a value) | computed (a slot): `onto rules` holds
+#                        the term to a function that produces it and to a Requirement,
+#                        verified by a passing Test, that uses it
 #   close_mappings       pointers into external vocabularies. Mapped, never imported.
 #
 # `onto gen` compiles it into the Pydantic types and the JSON Schema that the app
@@ -135,14 +138,43 @@ classes:
 
   Rejection:
     description: >-
-      The refusal to record a proposed Finding, or to complete an Evaluation,
-      because it breaks a rule. It names the rule and says what would have
-      been accepted, so that the proposer can correct itself.
+      The refusal to record a proposed Finding, to complete an Evaluation or
+      to publish one, because it breaks a rule. It names the rule and says
+      what would have been accepted, so that the proposer can correct itself.
     slots:
       - rejection_rule
       - criterion
       - detail
       - allowed_values
+
+  Review:
+    description: >-
+      A person's decision on an Evaluation whose disposition is NEEDS_REVIEW:
+      whether the Evaluation stands. A Review is not a second Evaluation and
+      it does not change the Findings or the score.
+    annotations:
+      classification: confidential
+      denied_synonyms: [Approval, SignOff]
+    slots:
+      - call
+      - scorecard
+      - reviewer
+      - review_outcome
+      - reviewed_at
+
+  AuditRecord:
+    description: >-
+      The record of one change of the PublicationState of an Evaluation: which
+      Evaluation, the state it entered, who caused it and when. It carries
+      identifiers only, never the text of an Utterance, a rationale or a score.
+    annotations:
+      denied_synonyms: [AuditLog, LogEntry]
+    slots:
+      - call
+      - scorecard
+      - publication_state
+      - actor
+      - recorded_at
 
 slots:
   call_id:
@@ -242,6 +274,7 @@ slots:
     multivalued: true
     inlined_as_list: true
     required: true
+    minimum_cardinality: 1
   score:
     description: >-
       The weight of the Criteria a Call met, as a whole-number percentage of
@@ -252,14 +285,19 @@ slots:
     required: true
     annotations:
       classification: confidential
+      binding: computed
   evaluation_outcome:
     description: Whether an Evaluation passed.
     range: EvaluationOutcome
     required: true
+    annotations:
+      binding: computed
   disposition:
     description: Whether an Evaluation stands as it is or must be reviewed by a person first.
     range: Disposition
     required: true
+    annotations:
+      binding: computed
 
   criterion:
     description: The Criterion a Finding judges or a Rejection is about.
@@ -299,6 +337,33 @@ slots:
     description: The values that would have been accepted, where they form a closed set.
     multivalued: true
 
+  reviewer:
+    description: The bank's identifier for the person who made a Review.
+    required: true
+    annotations:
+      classification: PII
+  review_outcome:
+    description: What a Review decided.
+    range: ReviewOutcome
+    required: true
+  reviewed_at:
+    description: When a Review was made.
+    range: datetime
+    required: true
+  publication_state:
+    description: Where an Evaluation stands on its way to the Representative.
+    range: PublicationState
+    required: true
+  actor:
+    description: >-
+      Who caused a change of PublicationState: the identifier of a reviewer,
+      or the name of the system when no person was involved.
+    required: true
+  recorded_at:
+    description: When an AuditRecord was made.
+    range: datetime
+    required: true
+
 enums:
   Speaker:
     description: Who can speak an Utterance.
@@ -332,9 +397,33 @@ enums:
         description: The Evaluation stands without review.
       NEEDS_REVIEW:
         description: A person must review the Evaluation before it is used.
-  RejectionRule:
-    description: The rules a proposed Finding or an Evaluation can break.
+  ReviewOutcome:
+    description: What a Review can decide.
     permissible_values:
+      CONFIRMED:
+        description: The reviewer agrees that the Evaluation stands. It can be published.
+      OVERTURNED:
+        description: The reviewer does not accept the Evaluation. It is withheld.
+  PublicationState:
+    description: Where an Evaluation can stand on its way to the Representative.
+    permissible_values:
+      STAGED:
+        description: The Evaluation is complete and has not been shown to the Representative.
+      PUBLISHED:
+        description: The Evaluation has been shown to the Representative.
+      WITHHELD:
+        description: A Review overturned the Evaluation. It is never shown to the Representative.
+  RejectionRule:
+    description: >-
+      The rules a proposed Finding, an Evaluation or the publication of an
+      Evaluation can break.
+    annotations:
+      binding: rule
+    permissible_values:
+      REVIEW_REQUIRED:
+        description: >-
+          The Evaluation has the disposition NEEDS_REVIEW and no Review has
+          confirmed it, so it cannot be published.
       MALFORMED_FINDING:
         description: The proposal is not a well-formed Finding.
       UNKNOWN_CRITERION:

@@ -91,6 +91,16 @@
       "additionalProperties": false,
       "description": "A choice that constrains later work, with its rationale. A Decision stays in force until another Decision supersedes it.",
       "properties": {
+        "affects": {
+          "description": "Repository path globs a Decision constrains. A Task that touches a matching file is given the Decision with its slice.",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
         "bounded_context": {
           "description": "The bounded context the item belongs to. It selects the glossary its terms are checked against.",
           "type": "string"
@@ -217,6 +227,63 @@
         "id"
       ],
       "title": "Evidence",
+      "type": "object"
+    },
+    "Incident": {
+      "additionalProperties": false,
+      "description": "Something observed in operation that the system should not have done. An Incident is closed by Requirements: the ones it shows broken are verified again, or a new Requirement is raised from it.",
+      "properties": {
+        "bounded_context": {
+          "description": "The bounded context the item belongs to. It selects the glossary its terms are checked against.",
+          "type": "string"
+        },
+        "breaks": {
+          "description": "The Requirements an Incident shows broken.",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "id": {
+          "description": "The identifier of a Record. It is also the name of its file.",
+          "pattern": "^INC-\\d{4}$",
+          "type": "string"
+        },
+        "jira_key": {
+          "description": "The issue this item mirrors in the tracker, if any.",
+          "pattern": "^[A-Z][A-Z0-9]+-\\d+$",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "observed_on": {
+          "description": "The day an Incident was observed.",
+          "format": "date",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status": {
+          "$ref": "#/$defs/StatusEnum",
+          "description": "Where the item is in its lifecycle."
+        },
+        "title": {
+          "description": "A one-line summary.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "title",
+        "status",
+        "bounded_context",
+        "id"
+      ],
+      "title": "Incident",
       "type": "object"
     },
     "LoggedDecision": {
@@ -366,6 +433,20 @@
         "jira_key": {
           "description": "The issue this item mirrors in the tracker, if any.",
           "pattern": "^[A-Z][A-Z0-9]+-\\d+$",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "raised_from": {
+          "description": "The Incident a Requirement was raised from.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "replaces": {
+          "description": "The earlier Requirement this one replaces. The earlier one becomes superseded.",
           "type": [
             "string",
             "null"

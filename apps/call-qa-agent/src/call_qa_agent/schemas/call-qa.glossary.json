@@ -32,7 +32,15 @@
     },
     "Rejection": {
       "kind": "class",
-      "definition": "The refusal to record a proposed Finding, or to complete an Evaluation, because it breaks a rule. It names the rule and says what would have been accepted, so that the proposer can correct itself."
+      "definition": "The refusal to record a proposed Finding, to complete an Evaluation or to publish one, because it breaks a rule. It names the rule and says what would have been accepted, so that the proposer can correct itself."
+    },
+    "Review": {
+      "kind": "class",
+      "definition": "A person's decision on an Evaluation whose disposition is NEEDS_REVIEW: whether the Evaluation stands. A Review is not a second Evaluation and it does not change the Findings or the score."
+    },
+    "AuditRecord": {
+      "kind": "class",
+      "definition": "The record of one change of the PublicationState of an Evaluation: which Evaluation, the state it entered, who caused it and when. It carries identifiers only, never the text of an Utterance, a rationale or a score."
     },
     "call_id": {
       "kind": "slot",
@@ -146,6 +154,30 @@
       "kind": "slot",
       "definition": "The values that would have been accepted, where they form a closed set."
     },
+    "reviewer": {
+      "kind": "slot",
+      "definition": "The bank's identifier for the person who made a Review."
+    },
+    "review_outcome": {
+      "kind": "slot",
+      "definition": "What a Review decided."
+    },
+    "reviewed_at": {
+      "kind": "slot",
+      "definition": "When a Review was made."
+    },
+    "publication_state": {
+      "kind": "slot",
+      "definition": "Where an Evaluation stands on its way to the Representative."
+    },
+    "actor": {
+      "kind": "slot",
+      "definition": "Who caused a change of PublicationState: the identifier of a reviewer, or the name of the system when no person was involved."
+    },
+    "recorded_at": {
+      "kind": "slot",
+      "definition": "When an AuditRecord was made."
+    },
     "Speaker": {
       "kind": "enum",
       "definition": "Who can speak an Utterance.",
@@ -230,10 +262,53 @@
       "definition": "A person must review the Evaluation before it is used.",
       "of": "Disposition"
     },
+    "ReviewOutcome": {
+      "kind": "enum",
+      "definition": "What a Review can decide.",
+      "values": [
+        "CONFIRMED",
+        "OVERTURNED"
+      ]
+    },
+    "ReviewOutcome.CONFIRMED": {
+      "kind": "value",
+      "definition": "The reviewer agrees that the Evaluation stands. It can be published.",
+      "of": "ReviewOutcome"
+    },
+    "ReviewOutcome.OVERTURNED": {
+      "kind": "value",
+      "definition": "The reviewer does not accept the Evaluation. It is withheld.",
+      "of": "ReviewOutcome"
+    },
+    "PublicationState": {
+      "kind": "enum",
+      "definition": "Where an Evaluation can stand on its way to the Representative.",
+      "values": [
+        "STAGED",
+        "PUBLISHED",
+        "WITHHELD"
+      ]
+    },
+    "PublicationState.STAGED": {
+      "kind": "value",
+      "definition": "The Evaluation is complete and has not been shown to the Representative.",
+      "of": "PublicationState"
+    },
+    "PublicationState.PUBLISHED": {
+      "kind": "value",
+      "definition": "The Evaluation has been shown to the Representative.",
+      "of": "PublicationState"
+    },
+    "PublicationState.WITHHELD": {
+      "kind": "value",
+      "definition": "A Review overturned the Evaluation. It is never shown to the Representative.",
+      "of": "PublicationState"
+    },
     "RejectionRule": {
       "kind": "enum",
-      "definition": "The rules a proposed Finding or an Evaluation can break.",
+      "definition": "The rules a proposed Finding, an Evaluation or the publication of an Evaluation can break.",
       "values": [
+        "REVIEW_REQUIRED",
         "MALFORMED_FINDING",
         "UNKNOWN_CRITERION",
         "DUPLICATE_FINDING",
@@ -241,6 +316,11 @@
         "MISSING_CITATION",
         "MISSING_FINDING"
       ]
+    },
+    "RejectionRule.REVIEW_REQUIRED": {
+      "kind": "value",
+      "definition": "The Evaluation has the disposition NEEDS_REVIEW and no Review has confirmed it, so it cannot be published.",
+      "of": "RejectionRule"
     },
     "RejectionRule.MALFORMED_FINDING": {
       "kind": "value",

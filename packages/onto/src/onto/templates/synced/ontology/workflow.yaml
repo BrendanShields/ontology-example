@@ -94,6 +94,8 @@ classes:
       - ears_text
       - uses_terms
       - risk_tier
+      - raised_from
+      - replaces
     slot_usage:
       id:
         pattern: "^REQ-\\d{4}$"
@@ -122,6 +124,7 @@ classes:
       - rationale
       - uses_terms
       - supersedes
+      - affects
       - decided_by
       - decided_on
     slot_usage:
@@ -167,6 +170,20 @@ classes:
     slot_usage:
       id:
         pattern: "^EVD-\\d{4}$"
+
+  Incident:
+    is_a: WorkItem
+    mixins: [Entity]
+    description: >-
+      Something observed in operation that the system should not have done.
+      An Incident is closed by Requirements: the ones it shows broken are
+      verified again, or a new Requirement is raised from it.
+    slots:
+      - observed_on
+      - breaks
+    slot_usage:
+      id:
+        pattern: "^INC-\\d{4}$"
 
   LoggedDecision:
     mixins: [Entity]
@@ -246,6 +263,25 @@ slots:
     range: Decision
     slot_uri: prov:wasRevisionOf
     description: The earlier Decision this one replaces.
+  affects:
+    multivalued: true
+    description: >-
+      Repository path globs a Decision constrains. A Task that touches a
+      matching file is given the Decision with its slice.
+  raised_from:
+    range: Incident
+    description: The Incident a Requirement was raised from.
+  replaces:
+    range: Requirement
+    slot_uri: prov:wasRevisionOf
+    description: The earlier Requirement this one replaces. The earlier one becomes superseded.
+  observed_on:
+    range: date
+    description: The day an Incident was observed.
+  breaks:
+    range: Requirement
+    multivalued: true
+    description: The Requirements an Incident shows broken.
   decided_by:
     description: Who made the Decision.
   decided_on:

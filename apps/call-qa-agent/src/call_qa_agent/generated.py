@@ -149,9 +149,45 @@ class Disposition(str, Enum):
     """
 
 
+class ReviewOutcome(str, Enum):
+    """
+    What a Review can decide.
+    """
+    CONFIRMED = "CONFIRMED"
+    """
+    The reviewer agrees that the Evaluation stands. It can be published.
+    """
+    OVERTURNED = "OVERTURNED"
+    """
+    The reviewer does not accept the Evaluation. It is withheld.
+    """
+
+
+class PublicationState(str, Enum):
+    """
+    Where an Evaluation can stand on its way to the Representative.
+    """
+    STAGED = "STAGED"
+    """
+    The Evaluation is complete and has not been shown to the Representative.
+    """
+    PUBLISHED = "PUBLISHED"
+    """
+    The Evaluation has been shown to the Representative.
+    """
+    WITHHELD = "WITHHELD"
+    """
+    A Review overturned the Evaluation. It is never shown to the Representative.
+    """
+
+
 class RejectionRule(str, Enum):
     """
-    The rules a proposed Finding or an Evaluation can break.
+    The rules a proposed Finding, an Evaluation or the publication of an Evaluation can break.
+    """
+    REVIEW_REQUIRED = "REVIEW_REQUIRED"
+    """
+    The Evaluation has the disposition NEEDS_REVIEW and no Review has confirmed it, so it cannot be published.
     """
     MALFORMED_FINDING = "MALFORMED_FINDING"
     """
@@ -315,14 +351,17 @@ class Evaluation(ConfiguredBaseModel):
                                              'value': ['Assessment']}},
          'from_schema': 'https://bank.example/ontology/call-qa'})
 
-    call: str = Field(default=..., description="""The Call an Evaluation assesses.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Evaluation']} })
-    scorecard: str = Field(default=..., description="""The Scorecard an Evaluation applies.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Evaluation']} })
-    findings: list[Finding] = Field(default=..., description="""The Findings of an Evaluation, one per Criterion of its Scorecard.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Evaluation']} })
-    score: int = Field(default=..., description="""The weight of the Criteria a Call met, as a whole-number percentage of the weight of the Criteria that applied to it.""", ge=0, le=100, json_schema_extra = { "linkml_meta": {'annotations': {'classification': {'tag': 'classification',
+    call: str = Field(default=..., description="""The Call an Evaluation assesses.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Evaluation', 'Review', 'AuditRecord']} })
+    scorecard: str = Field(default=..., description="""The Scorecard an Evaluation applies.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Evaluation', 'Review', 'AuditRecord']} })
+    findings: list[Finding] = Field(default=..., description="""The Findings of an Evaluation, one per Criterion of its Scorecard.""", min_length=1, json_schema_extra = { "linkml_meta": {'domain_of': ['Evaluation']} })
+    score: int = Field(default=..., description="""The weight of the Criteria a Call met, as a whole-number percentage of the weight of the Criteria that applied to it.""", ge=0, le=100, json_schema_extra = { "linkml_meta": {'annotations': {'binding': {'tag': 'binding', 'value': 'computed'},
+                         'classification': {'tag': 'classification',
                                             'value': 'confidential'}},
          'domain_of': ['Evaluation']} })
-    evaluation_outcome: EvaluationOutcome = Field(default=..., description="""Whether an Evaluation passed.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Evaluation']} })
-    disposition: Disposition = Field(default=..., description="""Whether an Evaluation stands as it is or must be reviewed by a person first.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Evaluation']} })
+    evaluation_outcome: EvaluationOutcome = Field(default=..., description="""Whether an Evaluation passed.""", json_schema_extra = { "linkml_meta": {'annotations': {'binding': {'tag': 'binding', 'value': 'computed'}},
+         'domain_of': ['Evaluation']} })
+    disposition: Disposition = Field(default=..., description="""Whether an Evaluation stands as it is or must be reviewed by a person first.""", json_schema_extra = { "linkml_meta": {'annotations': {'binding': {'tag': 'binding', 'value': 'computed'}},
+         'domain_of': ['Evaluation']} })
 
 
 class Finding(ConfiguredBaseModel):
@@ -349,7 +388,7 @@ class Finding(ConfiguredBaseModel):
 
 class Rejection(ConfiguredBaseModel):
     """
-    The refusal to record a proposed Finding, or to complete an Evaluation, because it breaks a rule. It names the rule and says what would have been accepted, so that the proposer can correct itself.
+    The refusal to record a proposed Finding, to complete an Evaluation or to publish one, because it breaks a rule. It names the rule and says what would have been accepted, so that the proposer can correct itself.
     """
     linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'from_schema': 'https://bank.example/ontology/call-qa'})
 
@@ -357,6 +396,39 @@ class Rejection(ConfiguredBaseModel):
     criterion: Optional[str] = Field(default=None, description="""The Criterion a Finding judges or a Rejection is about.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Finding', 'Rejection']} })
     detail: str = Field(default=..., description="""What was wrong, in words the proposer can act on.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Rejection']} })
     allowed_values: Optional[list[str]] = Field(default=None, description="""The values that would have been accepted, where they form a closed set.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Rejection']} })
+
+
+class Review(ConfiguredBaseModel):
+    """
+    A person's decision on an Evaluation whose disposition is NEEDS_REVIEW: whether the Evaluation stands. A Review is not a second Evaluation and it does not change the Findings or the score.
+    """
+    linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'annotations': {'classification': {'tag': 'classification',
+                                            'value': 'confidential'},
+                         'denied_synonyms': {'tag': 'denied_synonyms',
+                                             'value': ['Approval', 'SignOff']}},
+         'from_schema': 'https://bank.example/ontology/call-qa'})
+
+    call: str = Field(default=..., description="""The Call an Evaluation assesses.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Evaluation', 'Review', 'AuditRecord']} })
+    scorecard: str = Field(default=..., description="""The Scorecard an Evaluation applies.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Evaluation', 'Review', 'AuditRecord']} })
+    reviewer: str = Field(default=..., description="""The bank's identifier for the person who made a Review.""", json_schema_extra = { "linkml_meta": {'annotations': {'classification': {'tag': 'classification', 'value': 'PII'}},
+         'domain_of': ['Review']} })
+    review_outcome: ReviewOutcome = Field(default=..., description="""What a Review decided.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Review']} })
+    reviewed_at: datetime  = Field(default=..., description="""When a Review was made.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Review']} })
+
+
+class AuditRecord(ConfiguredBaseModel):
+    """
+    The record of one change of the PublicationState of an Evaluation: which Evaluation, the state it entered, who caused it and when. It carries identifiers only, never the text of an Utterance, a rationale or a score.
+    """
+    linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'annotations': {'denied_synonyms': {'tag': 'denied_synonyms',
+                                             'value': ['AuditLog', 'LogEntry']}},
+         'from_schema': 'https://bank.example/ontology/call-qa'})
+
+    call: str = Field(default=..., description="""The Call an Evaluation assesses.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Evaluation', 'Review', 'AuditRecord']} })
+    scorecard: str = Field(default=..., description="""The Scorecard an Evaluation applies.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Evaluation', 'Review', 'AuditRecord']} })
+    publication_state: PublicationState = Field(default=..., description="""Where an Evaluation stands on its way to the Representative.""", json_schema_extra = { "linkml_meta": {'domain_of': ['AuditRecord']} })
+    actor: str = Field(default=..., description="""Who caused a change of PublicationState: the identifier of a reviewer, or the name of the system when no person was involved.""", json_schema_extra = { "linkml_meta": {'domain_of': ['AuditRecord']} })
+    recorded_at: datetime  = Field(default=..., description="""When an AuditRecord was made.""", json_schema_extra = { "linkml_meta": {'domain_of': ['AuditRecord']} })
 
 
 # Model rebuild
@@ -369,3 +441,5 @@ Criterion.model_rebuild()
 Evaluation.model_rebuild()
 Finding.model_rebuild()
 Rejection.model_rebuild()
+Review.model_rebuild()
+AuditRecord.model_rebuild()
