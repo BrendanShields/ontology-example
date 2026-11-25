@@ -1,0 +1,4 @@
+# Derived by the ontology tooling, never committed:
+# evidence is recorded by a test run, provenance bundles are built from it in CI.
+work/evidence/
+prov/*.ttl

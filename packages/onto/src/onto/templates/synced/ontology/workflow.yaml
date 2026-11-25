@@ -1,0 +1,384 @@
+# L1 — workflow ontology, shared by every app in the monorepo.
+#
+# It types the delivery work itself: what a requirement, task, decision, change,
+# test and piece of evidence are, and how they link. Each instance is a markdown
+# file under work/ whose YAML frontmatter must validate against a class below.
+#
+#   onto gen       compiles this file into ontology/schemas/workflow.schema.json
+#                  (frontmatter validation) and ontology/shapes/workflow.shacl.ttl
+#                  (graph validation)
+#   onto validate  checks every work item against the JSON Schema
+#   onto trace     builds the graph and runs the SHACL shapes over it
+#
+# PROV-O is reused by reference (class_uri / slot_uri), not imported.
+id: {{base_uri}}/ontology/workflow
+name: workflow
+title: Workflow ontology (L1)
+description: >-
+  The typed spine of delivery work: requirements, tasks, decisions, changes,
+  tests and evidence, and the links that make a change traceable from the
+  requirement it serves to the test run that proves it.
+version: 0.1.0
+
+prefixes:
+  linkml: https://w3id.org/linkml/
+  wf: {{base_uri}}/ontology/workflow/
+  # Namespace of the instances: work/REQ-0001.md becomes work:REQ-0001 in the graph.
+  work: {{base_uri}}/work/
+  prov: http://www.w3.org/ns/prov#
+  skos: http://www.w3.org/2004/02/skos/core#
+default_prefix: wf
+default_range: string
+
+imports:
+  - linkml:types
+
+classes:
+  # --- PROV-O alignment ------------------------------------------------------
+  # Mixins carry the PROV class. The graph builder types every instance with the
+  # URIs of all its ancestors, so a Change is also a prov:Activity in the graph.
+  Entity:
+    mixin: true
+    class_uri: prov:Entity
+    description: Something that exists and can be described, used or produced (prov:Entity).
+  Activity:
+    mixin: true
+    class_uri: prov:Activity
+    description: Something that happens over time and acts on entities (prov:Activity).
+
+  # --- Bridge to the domain ontologies (L2) ----------------------------------
+  Term:
+    description: >-
+      A term of a bounded context's glossary. Terms are not written by hand:
+      the graph builder derives one from every class, slot, enum and
+      permissible value of the context's domain ontology (ontology/domains/).
+    slots:
+      - id
+      - term_kind
+      - definition
+      - bounded_context
+      - classification
+      - aliases
+      - denied_synonyms
+      - exact_mappings
+      - close_mappings
+    slot_usage:
+      id:
+        description: The name of the term, exactly as the domain ontology spells it.
+        pattern: "^[A-Za-z][A-Za-z0-9_.]*$"
+
+  # --- Records ---------------------------------------------------------------
+  Record:
+    abstract: true
+    description: Anything stored as one file under work/ and identified by its id.
+    slots:
+      - id
+
+  WorkItem:
+    is_a: Record
+    abstract: true
+    description: A Record that people and agents plan, do and track.
+    slots:
+      - title
+      - status
+      - bounded_context
+      - jira_key
+
+  Requirement:
+    is_a: WorkItem
+    mixins: [Entity]
+    description: >-
+      One thing the system must do, written as a single EARS sentence and bound
+      to the glossary terms it is about.
+    slots:
+      - ears_text
+      - uses_terms
+      - risk_tier
+    slot_usage:
+      id:
+        pattern: "^REQ-\\d{4}$"
+      uses_terms:
+        required: true
+        minimum_cardinality: 1
+
+  Task:
+    is_a: WorkItem
+    mixins: [Entity]
+    description: A unit of work that implements one or more Requirements.
+    slots:
+      - implements
+      - blocked_by
+    slot_usage:
+      id:
+        pattern: "^TASK-\\d{4}$"
+
+  Decision:
+    is_a: WorkItem
+    mixins: [Entity]
+    description: >-
+      A choice that constrains later work, with its rationale. A Decision stays
+      in force until another Decision supersedes it.
+    slots:
+      - rationale
+      - uses_terms
+      - supersedes
+      - decided_by
+      - decided_on
+    slot_usage:
+      id:
+        pattern: "^DEC-\\d{4}$"
+
+  Change:
+    is_a: WorkItem
+    mixins: [Activity]
+    description: The act of changing the code to resolve Tasks. Usually one pull request.
+    slots:
+      - resolves
+      - pr_url
+      - generated_by_agent
+      - model_id
+    slot_usage:
+      id:
+        pattern: "^CHG-\\d{4}$"
+
+  Test:
+    is_a: WorkItem
+    mixins: [Entity]
+    description: An automated test that verifies one or more Requirements.
+    slots:
+      - verifies
+      - path
+    slot_usage:
+      id:
+        pattern: "^TST-\\d{4}$"
+
+  Evidence:
+    is_a: Record
+    mixins: [Entity]
+    description: >-
+      The recorded result of running one Test. Evidence is derived, never
+      written by hand: `onto evidence collect` produces it from a test run.
+    slots:
+      - of_test
+      - result
+      - commit_sha
+      - run_url
+      - recorded_at
+    slot_usage:
+      id:
+        pattern: "^EVD-\\d{4}$"
+
+  LoggedDecision:
+    mixins: [Entity]
+    description: >-
+      One line of an agent's decision log: what it decided while working, why
+      and on what basis. Logged decisions are not files under work/. They are
+      rows of .audit/<work item>.tsv, turned into provenance by `onto prov emit`.
+    slots:
+      - recorded_at
+      - phase
+      - decision
+      - rationale
+      - basis
+      - outcome
+      - concerns
+
+  OntologyChangeRequest:
+    is_a: WorkItem
+    mixins: [Entity]
+    description: >-
+      A proposal to add, rename, redefine or retire a glossary Term. It is the
+      only route by which a domain ontology changes, and a person approves it.
+    slots:
+      - proposed_term
+      - proposed_definition
+      - justification
+    slot_usage:
+      id:
+        pattern: "^OCR-\\d{4}$"
+
+slots:
+  id:
+    identifier: true
+    required: true
+    description: The identifier of a Record. It is also the name of its file.
+  title:
+    required: true
+    description: A one-line summary.
+  status:
+    range: StatusEnum
+    required: true
+    description: Where the item is in its lifecycle.
+  bounded_context:
+    required: true
+    description: The bounded context the item belongs to. It selects the glossary its terms are checked against.
+  jira_key:
+    pattern: "^[A-Z][A-Z0-9]+-\\d+$"
+    description: The issue this item mirrors in the tracker, if any.
+
+  ears_text:
+    required: true
+    description: >-
+      The requirement as one EARS sentence ("When <trigger>, the <system> shall
+      <response>"). Glossary terms are written in backticks.
+  uses_terms:
+    range: Term
+    multivalued: true
+    description: The glossary Terms this item is about. Each must exist in the item's bounded context.
+  risk_tier:
+    range: RiskTierEnum
+    description: How much review a change to this Requirement needs.
+
+  implements:
+    range: Requirement
+    multivalued: true
+    required: true
+    description: The Requirements a Task implements.
+  blocked_by:
+    range: Task
+    multivalued: true
+    description: Tasks that must be done before this one can start.
+
+  rationale:
+    required: true
+    description: Why the Decision was made, and what was rejected.
+  supersedes:
+    range: Decision
+    slot_uri: prov:wasRevisionOf
+    description: The earlier Decision this one replaces.
+  decided_by:
+    description: Who made the Decision.
+  decided_on:
+    range: date
+    description: The day the Decision was made.
+
+  resolves:
+    range: Task
+    multivalued: true
+    required: true
+    description: The Tasks a Change resolves.
+  pr_url:
+    range: uri
+    description: The pull request that carries the Change.
+  generated_by_agent:
+    description: The coding agent that produced the Change, if one did.
+  model_id:
+    description: The model that agent ran on.
+
+  verifies:
+    range: Requirement
+    multivalued: true
+    required: true
+    description: The Requirements a Test verifies.
+  path:
+    required: true
+    description: The pytest node id of the Test, relative to the repository root.
+
+  of_test:
+    range: Test
+    required: true
+    description: The Test whose run this Evidence records.
+  result:
+    range: ResultEnum
+    required: true
+    description: Whether the Test passed.
+  commit_sha:
+    pattern: "^[0-9a-f]{40}$"
+    description: The commit that was checked out when the Test ran.
+  run_url:
+    range: uri
+    description: The CI run that produced the Evidence.
+  recorded_at:
+    range: datetime
+    slot_uri: prov:generatedAtTime
+    description: When the record was made.
+
+  phase:
+    description: The stage of work a decision was logged in, such as plan, implement or verify.
+  decision:
+    slot_uri: prov:value
+    required: true
+    description: What was decided, in one sentence.
+  basis:
+    description: What the decision rests on, such as a file, a command's output or a link.
+  outcome:
+    description: What came of the decision, once known.
+  concerns:
+    range: WorkItem
+    description: The work item a logged decision was made for.
+
+  proposed_term:
+    required: true
+    description: The term the request is about, spelled as it should appear in the glossary.
+  proposed_definition:
+    description: The definition the term should have.
+  justification:
+    required: true
+    description: Why the glossary must change, and which requirement needs it.
+
+  term_kind:
+    range: TermKindEnum
+    description: Whether a Term is a class, a slot, an enum or one value of an enum.
+  definition:
+    slot_uri: skos:definition
+    description: What a Term means.
+  classification:
+    range: ClassificationEnum
+    description: How sensitive the data a Term names is.
+  aliases:
+    multivalued: true
+    slot_uri: skos:altLabel
+    description: Other spellings that resolve to a Term.
+  denied_synonyms:
+    multivalued: true
+    description: Names that must not be used for the concept a Term names.
+  exact_mappings:
+    range: uri
+    multivalued: true
+    slot_uri: skos:exactMatch
+    description: Concepts in external vocabularies that mean the same as a Term.
+  close_mappings:
+    range: uri
+    multivalued: true
+    slot_uri: skos:closeMatch
+    description: Concepts in external vocabularies that are close to a Term.
+
+enums:
+  StatusEnum:
+    description: The lifecycle shared by all work items.
+    permissible_values:
+      draft:
+        description: Being written. Not yet agreed.
+      ready:
+        description: Agreed and ready to be worked on.
+      in_progress:
+        description: Being worked on.
+      done:
+        description: Finished. For a Requirement, a claim the traceability gate checks. For a Decision, in force.
+      superseded:
+        description: Replaced by a later item and no longer in force.
+  RiskTierEnum:
+    description: How much review a change needs.
+    permissible_values:
+      low: {}
+      medium: {}
+      high: {}
+      critical: {}
+  ResultEnum:
+    permissible_values:
+      pass: {}
+      fail: {}
+  TermKindEnum:
+    permissible_values:
+      class: {}
+      slot: {}
+      enum: {}
+      value: {}
+  ClassificationEnum:
+    description: Data classification, least to most sensitive.
+    permissible_values:
+      public: {}
+      internal: {}
+      confidential: {}
+      PII:
+        description: Personal information about an identifiable person.

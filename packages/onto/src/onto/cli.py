@@ -613,6 +613,12 @@ def _gen(args) -> int:
     return 0
 
 
+def _init(args) -> int:
+    from . import scaffold
+
+    return scaffold.run(args)
+
+
 # --- argument parsing ------------------------------------------------------------
 
 
@@ -736,6 +742,12 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--justification", required=True)
     p.add_argument("--definition")
     p.add_argument("--title")
+
+    from . import scaffold
+
+    scaffold.arguments(
+        command("init", _init, "scaffold the ontology layer into the git repository you are in")
+    )
 
     p = command("gen", _gen, "compile the LinkML sources into JSON Schema, SHACL and Pydantic")
     p.add_argument("--check", action="store_true", help="fail if a generated file is out of date")

@@ -1,7 +1,7 @@
 # Everything here is a thin wrapper. The commands are the documentation.
 ONTO := bin/onto
 
-.PHONY: setup gen check test view lint mods vendored
+.PHONY: setup gen check test view lint mods vendored templates
 
 setup:            ## install the workspace into .venv
 	uv sync
@@ -33,3 +33,6 @@ mods:             ## validate and test the Claude mods (needs the claude CLI)
 
 vendored:         ## the vendored pstack files still match their pinned commit
 	uv run python tools/check_vendored.py
+
+templates:        ## regenerate what `onto init` scaffolds from ontology/ and .claude/
+	uv run python tools/sync_templates.py

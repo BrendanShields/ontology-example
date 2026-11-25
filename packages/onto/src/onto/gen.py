@@ -174,8 +174,8 @@ def _require_linkml() -> None:
         import linkml  # noqa: F401
     except ImportError as exc:
         raise GeneratorUnavailable(
-            "`onto gen` needs the LinkML generators: install onto-cli with the 'gen' extra "
-            "(`uv sync` at the repository root does this)"
+            "`onto gen` needs the LinkML generators: install onto-cli with its 'gen' extra, "
+            "onto-cli[gen]"
         ) from exc
 
 
