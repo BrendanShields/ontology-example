@@ -15,3 +15,12 @@
 9. [ship] Open the pull request. The owners of `ontology/` in CODEOWNERS review it: that review is the control, the guard is only a reminder.
 
 **Reply:** the term, its definition, what was denied in its favour, what the generated types changed, and who approved.
+
+#### Retirement
+
+Retiring a glossary term, or an app together with its bounded context, is an ontology change. It starts at step 1 with a request that says what is retired and what, if anything, takes its place. Two things come before step 5.
+
+- `bin/onto cq CQ-06 --bind term=<Term>` lists the Requirements, Tests and Decisions that depend on the term. Each Requirement that still states a rule on it is replaced through the Rule change playbook first, so that nothing in force rests on a retired term.
+- Put to the person what happens to the record. `bin/onto validate` holds every work item to the glossary, superseded ones too: a term that a work item still lists in `uses_terms` cannot leave, and the work items of a bounded context that is gone would no longer validate. Do not delete or rewrite work items to make a gate pass.
+
+A retired name is added to `denied_synonyms` of the term that takes its place, as for a rename.

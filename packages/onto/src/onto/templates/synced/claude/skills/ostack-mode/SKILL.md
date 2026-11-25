@@ -69,7 +69,11 @@ Each is a hook in `.claude/settings.json` running `{{onto_cmd}}`. When one answe
 
 Match the task to a playbook and open its steps at `playbooks/<title>.md`, with the title in kebab case. Copy its steps into the task list first, word for word. A step you choose not to do stays in the list with a one-line `skip: <reason>`.
 
-Feature, Bug fix, Investigation, Ontology change.
+Feature, Bug fix, Incident, Rule change, Investigation, Ontology change.
+
+- Something went wrong in operation → Incident. It records what was observed and hands over to Bug fix.
+- A `done` Requirement would have to say something else → Rule change. The Requirement is replaced, not edited.
+- A glossary term, or an app with its bounded context, is retired → Ontology change, under Retirement.
 
 Each step is tagged with the stage it belongs to: intake, vocabulary, design, implement, verify, trace, ship. Use the tag as `--phase` when you log a decision. `{{onto_cmd}} view` reads the repository and says which stage each Task has reached.
 

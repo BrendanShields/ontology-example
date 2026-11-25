@@ -6,12 +6,13 @@ The prefix of the id says which class.
 
 | Prefix | Class | Links to |
 | --- | --- | --- |
-| `REQ-` | Requirement | glossary terms (`uses_terms`) |
+| `REQ-` | Requirement | glossary terms (`uses_terms`), the Requirement it `replaces`, the Incident it was `raised_from` |
 | `TASK-` | Task | the Requirements it `implements`, the Tasks it is `blocked_by` |
-| `DEC-` | Decision | the Decision it `supersedes`, glossary terms |
+| `DEC-` | Decision | the Decision it `supersedes`, glossary terms, the path globs it `affects` |
 | `TST-` | Test | the Requirements it `verifies`, the pytest node at `path` |
 | `CHG-` | Change | the Tasks it `resolves` |
 | `OCR-` | OntologyChangeRequest | the term it proposes |
+| `INC-` | Incident | the Requirements it `breaks` |
 
 Create one with `{{onto_cmd}} new <Class> key=value ...`: it is validated before
 it is written. Check them all with `{{onto_cmd}} validate`. See where each Task
