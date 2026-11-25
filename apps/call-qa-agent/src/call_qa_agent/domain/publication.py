@@ -181,6 +181,9 @@ def _permitted(
     state: PublicationState, records: Sequence[AuditRecord], call: str, scorecard: str, what: str
 ) -> None:
     """Refuse unless the Evaluation stands where `CHANGES` lets it enter `state`."""
+    if any((record.call, record.scorecard) != (call, scorecard) for record in records):
+        # Where another Evaluation stands says nothing about this one.
+        raise Refused(f"the AuditRecords given are not all of {call} against {scorecard}")
     current = publication_state(records)
     if state in CHANGES[current]:
         return

@@ -137,6 +137,18 @@ class TestStagingAndPublishing:
 
         assert publish(evaluation, [confirmed], records).publication_state == "PUBLISHED"
 
+    def test_where_another_call_stands_permits_nothing_for_this_one(self):
+        other = STANDS.model_copy(update={"call": "CALL-9201"})
+
+        with pytest.raises(Refused):  # CALL-9200 is not staged: only CALL-9201 is
+            publish(STANDS, [], staged(other))
+        with pytest.raises(Refused):
+            publication.review(
+                made(ReviewOutcome.OVERTURNED), CRITICAL_FAILURE.disposition, staged(other)
+            )
+        with pytest.raises(Refused):
+            publication.stage(STANDS, staged(other), actor="system", recorded_at=NOON)
+
     def test_what_is_not_staged_is_not_published(self):
         with pytest.raises(Refused) as refused:
             publish(STANDS, [], [])

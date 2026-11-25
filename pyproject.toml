@@ -68,8 +68,11 @@ forbidden_modules = [
 ]
 
 # The domain layer decides and keeps nothing: it is handed what it needs, the time
-# included, and whoever calls it does the reading and the writing. `datetime` is not
-# listed because the domain layer needs the type: nothing here stops datetime.now().
+# included, and whoever calls it does the reading and the writing. A list of forbidden
+# modules is never complete and cannot see open() or datetime.now(), so the rule itself
+# is held by apps/call-qa-agent/tests/test_domain_layer.py, which allows a short list of
+# imports and nothing else. This contract names the usual ways out in the same run as
+# the other layering rules.
 [[tool.importlinter.contracts]]
 name = "call-qa: the domain layer reads and writes nothing"
 type = "forbidden"
@@ -93,6 +96,7 @@ forbidden_modules = [
     "urllib",
     "http",
     "httpx2",
+    "requests",
 ]
 
 [[tool.importlinter.contracts]]
