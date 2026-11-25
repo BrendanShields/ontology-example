@@ -1,0 +1,96 @@
+{
+  "what": "A pinned subset of pstack, copied unchanged into upstream/ and adapted under .claude/skills/.",
+  "upstream": {
+    "repository": "https://github.com/michael-denyer/pstack-claude",
+    "commit": "103a68d9a9aa23759d00ad95b01cb78cb8f57772",
+    "fetched_on": "2026-11-24",
+    "license": "MIT",
+    "description": "Claude Code port of pstack by Lauren Tan (cursor/plugins/pstack). The port is (c) 2026 Michael Denyer."
+  },
+  "files": [
+    {
+      "upstream_path": "plugins/pstack/skills/poteto-mode/SKILL.md",
+      "copy": ".claude/pstack/upstream/skills/poteto-mode/SKILL.md",
+      "sha256": "c320a79ee4f839914bf0e958d6e02540fa9ff44de0d6bf8a7b0552768118497c",
+      "adapted_as": ".claude/skills/ostack-mode/SKILL.md"
+    },
+    {
+      "upstream_path": "plugins/pstack/skills/poteto-mode/playbooks/feature.md",
+      "copy": ".claude/pstack/upstream/skills/poteto-mode/playbooks/feature.md",
+      "sha256": "64ea7195c8a2e3c7489d821397af00f1b56e8113241c7ffdf378bad1db635a6e",
+      "adapted_as": ".claude/skills/ostack-mode/playbooks/feature.md"
+    },
+    {
+      "upstream_path": "plugins/pstack/skills/poteto-mode/playbooks/bug-fix.md",
+      "copy": ".claude/pstack/upstream/skills/poteto-mode/playbooks/bug-fix.md",
+      "sha256": "5b7e0d2abdb0e6d8f0a3ec65d4a65b71e13a8615a664c46826991f75db7f4a37",
+      "adapted_as": ".claude/skills/ostack-mode/playbooks/bug-fix.md"
+    },
+    {
+      "upstream_path": "plugins/pstack/skills/poteto-mode/playbooks/investigation.md",
+      "copy": ".claude/pstack/upstream/skills/poteto-mode/playbooks/investigation.md",
+      "sha256": "1009fdb6596a9c06cb93e224ec86bfb60226f2c603474c968a4f2c2983e96a69",
+      "adapted_as": ".claude/skills/ostack-mode/playbooks/investigation.md"
+    },
+    {
+      "upstream_path": "plugins/pstack/skills/how/SKILL.md",
+      "copy": ".claude/pstack/upstream/skills/how/SKILL.md",
+      "sha256": "be16a98e2074fee98d9b4d67a6d35a59ac720cf8306aef4f1e47093579b2841e",
+      "adapted_as": ".claude/skills/how/SKILL.md"
+    },
+    {
+      "upstream_path": "plugins/pstack/skills/why/SKILL.md",
+      "copy": ".claude/pstack/upstream/skills/why/SKILL.md",
+      "sha256": "62bcf36fcc2b3a3baaa721e5d975bcc8180cffe75bf2d5769215da5e929341a4",
+      "adapted_as": ".claude/skills/why/SKILL.md"
+    },
+    {
+      "upstream_path": "plugins/pstack/skills/architect/SKILL.md",
+      "copy": ".claude/pstack/upstream/skills/architect/SKILL.md",
+      "sha256": "6b0be5288c2b711446aa052409b0117118e53658e879665981ca45839a89e992",
+      "adapted_as": ".claude/skills/architect/SKILL.md"
+    },
+    {
+      "upstream_path": "plugins/pstack/skills/interrogate/SKILL.md",
+      "copy": ".claude/pstack/upstream/skills/interrogate/SKILL.md",
+      "sha256": "612f24a3b040802e56d573e586ca2850df9cd3f2bff6836ca30b2b89fd129f91",
+      "adapted_as": ".claude/skills/interrogate/SKILL.md"
+    },
+    {
+      "upstream_path": "plugins/pstack/skills/show-me-your-work/SKILL.md",
+      "copy": ".claude/pstack/upstream/skills/show-me-your-work/SKILL.md",
+      "sha256": "8158edb824ec62c91489b7f0f910ba8748fedf9cf79e303757fb1707c1a3c09d",
+      "adapted_as": ".claude/skills/show-me-your-work/SKILL.md"
+    },
+    {
+      "upstream_path": "plugins/pstack/skills/show-me-your-work/references/decision-log-template.tsv",
+      "copy": ".claude/pstack/upstream/skills/show-me-your-work/references/decision-log-template.tsv",
+      "sha256": "6779378006a2f5225e8c06deb84f1d913fb532041ebbb6e50d94600bfe3f4b76",
+      "adapted_as": null
+    },
+    {
+      "upstream_path": "plugins/pstack/skills/principle-model-the-domain/SKILL.md",
+      "copy": ".claude/pstack/upstream/skills/principle-model-the-domain/SKILL.md",
+      "sha256": "6d516916d6b51610c317b4b1185e9bc64ccd871aff6c43604a299ff2fef2ef56",
+      "adapted_as": ".claude/skills/principle-model-the-domain/SKILL.md"
+    },
+    {
+      "upstream_path": "plugins/pstack/skills/principle-type-system-discipline/SKILL.md",
+      "copy": ".claude/pstack/upstream/skills/principle-type-system-discipline/SKILL.md",
+      "sha256": "b84b2b4f6cf135c8810d90349a5006d64a6e7a0f299ff15e2b104d0931046981",
+      "adapted_as": ".claude/skills/principle-type-system-discipline/SKILL.md"
+    },
+    {
+      "upstream_path": "plugins/pstack/skills/principle-boundary-discipline/SKILL.md",
+      "copy": ".claude/pstack/upstream/skills/principle-boundary-discipline/SKILL.md",
+      "sha256": "48757a017361dbbae116bd8925f5a0e9b0724483d8856bf7afdb920d363123c3",
+      "adapted_as": ".claude/skills/principle-boundary-discipline/SKILL.md"
+    },
+    {
+      "upstream_path": "plugins/pstack/skills/principle-prove-it-works/SKILL.md",
+      "copy": ".claude/pstack/upstream/skills/principle-prove-it-works/SKILL.md",
+      "sha256": "ce9314234195c4c1ac563cebd3f0bdcfb87cb7bbf44c0d509f889c265716207a",
+      "adapted_as": ".claude/skills/principle-prove-it-works/SKILL.md"
+    }
+  ]
+}

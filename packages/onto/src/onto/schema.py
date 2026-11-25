@@ -10,6 +10,7 @@ from functools import cached_property
 from urllib.parse import urlparse
 
 from .config import Config
+from .failures import missing
 
 RECORD_ROOT = "Record"  # every class stored as a file under work/ descends from this
 TERM_CLASS = "Term"  # the bridge to the domain ontologies
@@ -39,6 +40,12 @@ class WorkflowSchema:
     def view(self):
         from linkml_runtime.utils.schemaview import SchemaView
 
+        if not self.cfg.workflow_schema.is_file():
+            raise missing(
+                "the workflow ontology every command reads",
+                self.cfg.rel(self.cfg.workflow_schema),
+                "run `onto init` to scaffold it",
+            )
         return SchemaView(str(self.cfg.workflow_schema))
 
     # --- namespaces -----------------------------------------------------------

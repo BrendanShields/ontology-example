@@ -21,7 +21,7 @@ DOMAIN = "apps/call-qa-agent/src/call_qa_agent/domain/example.py"
 
 @pytest.fixture
 def repo(tmp_path, monkeypatch):
-    scratch = scratch_repo(tmp_path)
+    scratch = scratch_repo(tmp_path, term="Finding")
     monkeypatch.setenv("ONTO_ROOT", str(scratch.root))
     monkeypatch.delenv("ONTO_TASK", raising=False)
     return scratch

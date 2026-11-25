@@ -1,0 +1,61 @@
+# The same gates the hooks run, on everything, where nobody can skip them.
+#
+# Written by `onto init`. Change the Install step to however this repository
+# installs its development dependencies: onto-cli[gen] has to be among them.
+# Pin each action to a commit SHA if your organisation requires it.
+name: ontology gates
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  # The one command every step runs.
+  ONTO: {{onto_cmd_quoted}}
+
+jobs:
+  gates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # `--scope branch` compares with the base branch
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install
+        run: |
+          pip install uv
+          uv sync --locked
+
+      - name: Generated artefacts match the ontology
+        run: $ONTO gen --check
+
+      - name: Work items and glossaries are valid
+        run: $ONTO validate
+
+      - name: Domain layers use glossary vocabulary
+        run: $ONTO check-terms
+
+      - name: Tests of the Test items, then traceability and graph gates
+        run: $ONTO trace --collect
+
+      - name: Provenance bundle per change
+        if: always()
+        run: $ONTO prov emit
+
+      - name: Keep the evidence and the provenance
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: provenance-${{ github.sha }}
+          path: |
+            prov/
+            work/evidence/
+          if-no-files-found: ignore

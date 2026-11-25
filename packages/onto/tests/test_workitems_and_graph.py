@@ -14,7 +14,7 @@ from rdflib import RDF, URIRef
 
 @pytest.fixture
 def repo(tmp_path):
-    scratch = scratch_repo(tmp_path)
+    scratch = scratch_repo(tmp_path, term="Finding")
     scratch.item("REQ-0001")
     return scratch
 

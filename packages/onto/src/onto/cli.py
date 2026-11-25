@@ -12,6 +12,7 @@ from pathlib import Path
 
 from . import __version__, report
 from .config import ConfigError
+from .failures import describe
 from .hooks import BLOCK
 
 
@@ -25,7 +26,7 @@ def main(argv: list[str] | None = None) -> int:
         return args.handler(args)
     except (ConfigError, FileNotFoundError, ValueError, KeyError) as exc:
         # Deliberately not exit code 2: a tool that cannot run must not block a session.
-        print(f"onto: {exc.args[0] if exc.args else exc}", file=sys.stderr)
+        print(f"onto: {describe(exc)}", file=sys.stderr)
         return 1
 
 
@@ -226,7 +227,7 @@ def _check_terms(args) -> int:
         return _check_terms_hook(ws, hooks.read_event())
 
     files = [ws.cfg.rel(Path(p).resolve()) for p in args.paths] or _domain_files(ws)
-    problems: list = []
+    problems: list = [] if args.paths else terms.unchecked_layers(ws)
     allowed = 0
     for rel in files:
         text = _read(ws.cfg.root / rel)
@@ -396,7 +397,7 @@ def _scope(ws, name: str, *, stop: bool = False):
 
 
 def _trace(args) -> int:
-    from . import changes, evidence, gates, hooks
+    from . import changes, evidence, gates, hooks, namespaces
     from .graph import build_graph
 
     ws = _workspace()
@@ -404,7 +405,9 @@ def _trace(args) -> int:
     event = hooks.read_event() if stop else {}
     scope = _scope(ws, args.scope, stop=stop)
     branch_problems = changes.branch_problems(ws, stop=stop)
-    if scope is not None and not scope and not branch_problems:
+    # A gate written for another namespace concerns every branch, also one with no work item.
+    nothing_to_judge = not branch_problems and not namespaces.problems(ws)
+    if scope is not None and not scope and nothing_to_judge:
         if not stop:
             print("onto trace: nothing in scope on this branch")
         return 0
@@ -658,6 +661,12 @@ def _verify(args) -> int:
     return verify.run(args.scope, Path(args.out) if args.out else None)
 
 
+def _init(args) -> int:
+    from . import scaffold
+
+    return scaffold.run(args)
+
+
 # --- argument parsing ------------------------------------------------------------
 
 
@@ -803,6 +812,12 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--definition")
     p.add_argument("--title")
     dry_run(p)
+
+    from . import scaffold
+
+    scaffold.arguments(
+        command("init", _init, "scaffold the ontology layer into the git repository you are in")
+    )
 
     p = command("gen", _gen, "compile the LinkML sources into JSON Schema, SHACL and Pydantic")
     p.add_argument("--check", action="store_true", help="fail if a generated file is out of date")

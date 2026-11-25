@@ -19,4 +19,4 @@ Make the compiler reject impossible states, mismatched primitives, and unhandled
 
 The authoritative schema is the ontology. `bin/onto gen` derives the Pydantic types and the JSON Schema from it, and `bin/onto gen --check` fails the build when they drift. A language model's output is external data like any other: it is parsed into the generated types at the boundary and rejected there, with what would have been accepted, before any domain function sees it.
 
-Generated does not mean correct. A generator can drop a constraint. `apps/call-qa-agent/tests/test_generated_types.py` checks the generated types against the generated schema for that reason: extend it when you add a constraint to the ontology.
+Generated does not mean correct. A generator can drop a constraint. Keep a test that checks the generated types against the generated schema for that reason, and extend it when you add a constraint to the ontology.

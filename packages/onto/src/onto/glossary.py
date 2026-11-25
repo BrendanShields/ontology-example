@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from functools import cached_property
 
 from .config import Context
+from .failures import missing
 from .report import ERROR, Violation
 
 DEFAULT_CLASSIFICATION = "internal"
@@ -95,6 +96,12 @@ class Glossary:
     def view(self):
         from linkml_runtime.utils.schemaview import SchemaView
 
+        if not self.context.schema.is_file():
+            raise missing(
+                f"the glossary of the bounded context '{self.name}'",
+                str(self.context.schema),
+                f"write it, or correct `schema` under [contexts.{self.name}] in onto.toml",
+            )
         return SchemaView(str(self.context.schema))
 
     @cached_property

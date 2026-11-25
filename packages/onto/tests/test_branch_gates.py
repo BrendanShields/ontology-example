@@ -7,7 +7,7 @@ import json
 import subprocess
 
 import pytest
-from onto import changes, gen
+from onto import changes, gates, gen
 from onto.cli import main
 from onto.hooks import BLOCK
 from onto.testing import scratch_repo
@@ -139,7 +139,34 @@ def test_a_repository_without_commits_has_no_base_to_miss(tmp_path, monkeypatch)
     monkeypatch.setenv("ONTO_ROOT", str(scratch.root))
     git(scratch, "init", "-q", "-b", "trunk")
     # Nothing is committed, so every file counts as changed and none is hidden.
-    assert GLOSSARY in unrequested(scratch)
+    assert GLOSSARY in gates.changed_files(scratch.ws().cfg)
+    assert changes.base_is_known(scratch.ws().cfg) == []
+
+
+def test_the_branch_that_brings_the_ontology_layer_in_needs_no_request(tmp_path, monkeypatch):
+    """As `onto init` leaves a repository: the ontology is new, not changed."""
+    scratch = scratch_repo(tmp_path)
+    monkeypatch.setenv("ONTO_ROOT", str(scratch.root))
+    git(scratch, "init", "-q", "-b", "main")
+    assert unrequested(scratch) == []  # before the first commit
+
+    config = (scratch.root / "onto.toml").read_text()
+    (scratch.root / "onto.toml").unlink()
+    scratch.write("README.md", "A repository with a history and no ontology layer.\n")
+    git(scratch, "add", "README.md")
+    git(scratch, "commit", "-q", "-m", "before the layer")
+    scratch.write("onto.toml", config)
+    git(scratch, "checkout", "-q", "-b", "adopt")
+    assert unrequested(scratch) == []
+    git(scratch, "add", "-A")
+    git(scratch, "commit", "-q", "-m", "adopt the ontology layer")
+    assert unrequested(scratch) == []
+
+    # Once the base carries the layer, a change to it is a change.
+    git(scratch, "checkout", "-q", "main")
+    git(scratch, "merge", "-q", "--ff-only", "adopt")
+    touch(scratch, GLOSSARY)
+    assert unrequested(scratch) == [GLOSSARY]
 
 
 def test_the_stop_gate_catches_a_generated_file_changed_by_any_tool(repo, monkeypatch, capsys):

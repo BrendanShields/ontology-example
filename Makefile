@@ -1,7 +1,7 @@
 # Everything here is a thin wrapper. The commands are the documentation.
 ONTO := bin/onto
 
-.PHONY: setup gen check verify test view lint mods vendored hooks
+.PHONY: setup gen check verify test view lint mods vendored hooks templates
 
 setup:            ## install the workspace into .venv
 	uv sync
@@ -42,3 +42,6 @@ vendored:         ## the vendored pstack files still match their pinned commit
 
 hooks:            ## drive every hook with a documented event: decision, exit code, latency
 	uv run python tools/drive_hooks.py
+
+templates:        ## regenerate what `onto init` scaffolds from ontology/ and .claude/
+	uv run python tools/sync_templates.py

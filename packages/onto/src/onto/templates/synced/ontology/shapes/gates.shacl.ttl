@@ -1,0 +1,127 @@
+# Graph gates: the rules that span more than one work item.
+#
+# The shapes generated from workflow.yaml (workflow.shacl.ttl) check each node
+# against its own class. The shapes here are written by hand and check what no
+# single file can show: that a claim made in one place is backed up in another.
+# `onto trace` runs both sets over the traceability graph.
+#
+# Each constraint is a SPARQL SELECT. Every row it returns is one violation on
+# the node bound to $this; ?value, where selected, is the other node involved
+# and can be quoted in the message as {?value}.
+#
+# To add a gate: write the shape, add a case for it to
+# packages/onto/tests/test_gates.py and run `onto trace`.
+
+@prefix sh:   <http://www.w3.org/ns/shacl#> .
+@prefix owl:  <http://www.w3.org/2002/07/owl#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix prov: <http://www.w3.org/ns/prov#> .
+@prefix wf:   <{{base_uri}}/ontology/workflow/> .
+@prefix gate: <{{base_uri}}/ontology/gates/> .
+
+gate: a owl:Ontology ;
+    sh:declare
+        [ sh:prefix "wf" ;   sh:namespace "{{base_uri}}/ontology/workflow/"^^xsd:anyURI ] ,
+        [ sh:prefix "prov" ; sh:namespace "http://www.w3.org/ns/prov#"^^xsd:anyURI ] .
+
+# --- Traceability ------------------------------------------------------------
+# A Requirement is claimed complete when it is done, or when every Task that
+# implements it is done. A claim needs proof: at least one Test, and passing
+# Evidence for every Test that verifies it.
+
+gate:CompleteRequirementIsVerified a sh:NodeShape ;
+    sh:targetClass wf:Requirement ;
+    sh:sparql [
+        sh:message "Requirement is claimed complete (it is done, or all its Tasks are) but no Test verifies it." ;
+        sh:prefixes gate: ;
+        sh:select """
+            SELECT $this WHERE {
+                $this a wf:Requirement .
+                FILTER (
+                    EXISTS { $this wf:status "done" }
+                    || ( EXISTS { ?task wf:implements $this }
+                         && NOT EXISTS { ?open wf:implements $this ; wf:status ?status .
+                                         FILTER (?status != "done") } )
+                )
+                FILTER NOT EXISTS { ?test wf:verifies $this }
+            }""" ] ;
+    sh:sparql [
+        sh:message "Requirement is claimed complete (it is done, or all its Tasks are) but {?value} has no passing Evidence." ;
+        sh:prefixes gate: ;
+        sh:select """
+            SELECT $this ?value WHERE {
+                $this a wf:Requirement .
+                ?value wf:verifies $this .
+                FILTER (
+                    EXISTS { $this wf:status "done" }
+                    || ( EXISTS { ?task wf:implements $this }
+                         && NOT EXISTS { ?open wf:implements $this ; wf:status ?status .
+                                         FILTER (?status != "done") } )
+                )
+                FILTER NOT EXISTS { ?evidence wf:of_test ?value ; wf:result "pass" }
+            }""" ] .
+
+gate:DoneChangeResolvesDoneTasks a sh:NodeShape ;
+    sh:targetClass wf:Change ;
+    sh:sparql [
+        sh:message "Change is done but it resolves {?value}, which is not done." ;
+        sh:prefixes gate: ;
+        sh:select """
+            SELECT $this ?value WHERE {
+                $this wf:status "done" ; wf:resolves ?value .
+                ?value wf:status ?status .
+                FILTER (?status != "done")
+            }""" ] .
+
+# --- Risk --------------------------------------------------------------------
+# A Requirement about personal information gets the review a high-risk change
+# gets. The classification comes from the domain ontology, not from the author.
+
+gate:PiiRequirementIsHighRisk a sh:NodeShape ;
+    sh:targetClass wf:Requirement ;
+    sh:sparql [
+        sh:message "Requirement uses {?value}, which is classified PII, so its risk_tier must be high or critical." ;
+        sh:prefixes gate: ;
+        sh:select """
+            SELECT $this ?value WHERE {
+                $this wf:uses_terms ?value .
+                ?value wf:classification "PII" .
+                FILTER NOT EXISTS { $this wf:status "superseded" }
+                FILTER NOT EXISTS { $this wf:risk_tier ?tier . FILTER (?tier IN ("high", "critical")) }
+            }""" ] .
+
+# --- Decisions ---------------------------------------------------------------
+# "Which decisions are in force?" only has an answer if supersession is recorded
+# consistently on both ends. A Decision counts as decided once it is done, and
+# it stays decided after a later one supersedes it.
+
+gate:SupersededDecisionIsMarked a sh:NodeShape ;
+    sh:targetClass wf:Decision ;
+    sh:sparql [
+        sh:message "Decision is superseded by {?value} but its status is not superseded." ;
+        sh:prefixes gate: ;
+        sh:select """
+            SELECT $this ?value WHERE {
+                ?value prov:wasRevisionOf $this ; wf:status ?decided .
+                FILTER (?decided IN ("done", "superseded"))
+                $this wf:status ?status .
+                FILTER (?status != "superseded")
+            }""" ] ;
+    sh:sparql [
+        sh:message "Decision has status superseded but no decided Decision supersedes it." ;
+        sh:prefixes gate: ;
+        sh:select """
+            SELECT $this WHERE {
+                $this wf:status "superseded" .
+                FILTER NOT EXISTS {
+                    ?later prov:wasRevisionOf $this ; wf:status ?decided .
+                    FILTER (?decided IN ("done", "superseded"))
+                }
+            }""" ] ;
+    sh:sparql [
+        sh:message "Decision supersedes itself through a chain of Decisions." ;
+        sh:prefixes gate: ;
+        sh:select """
+            SELECT $this WHERE {
+                $this prov:wasRevisionOf+ $this .
+            }""" ] .

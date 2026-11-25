@@ -1,6 +1,6 @@
 ---
 name: ostack-mode
-description: The engineering workflow of this monorepo. pstack's poteto-mode with the ontology gates built into its playbooks. Use for any change to an app, for /ostack-mode, or when asked to work the ostack way.
+description: The engineering workflow of this repository. pstack's poteto-mode with the ontology gates built into its playbooks. Use for any change to an app, for /ostack-mode, or when asked to work the ostack way.
 ---
 
 # ostack mode

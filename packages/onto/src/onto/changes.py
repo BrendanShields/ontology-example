@@ -5,14 +5,15 @@ a person's editor writes the same files without it. These gates look at the
 result instead: the difference between the branch and its base.
 
 * An ontology source changed only if the branch also carries the
-  OntologyChangeRequest that asks for it, in progress or done.
+  OntologyChangeRequest that asks for it, in progress or done. A branch that
+  brings the ontology layer into a repository has no earlier ontology to change.
 * A generated file still matches the source it is generated from.
 """
 
 from __future__ import annotations
 
 from .config import CONFIG_FILE, Config, matches
-from .gates import base_commit, base_refs, changed_files, has_commits
+from .gates import base_commit, base_refs, changed_files, has_commits, layer_at_base
 from .guard import APPROVED
 from .report import ERROR, Violation
 from .workspace import Workspace
@@ -34,7 +35,7 @@ def branch_problems(ws: Workspace, *, stop: bool = False) -> list[Violation]:
     changed = changed_files(ws.cfg, or_uncommitted=True)
     if changed is None:
         return []
-    problems = ontology_change_is_requested(ws, changed)
+    problems = ontology_change_is_requested(ws, changed) if layer_at_base(ws.cfg) else []
     if stop:
         problems += generated_matches_source(ws.cfg, changed)
     else:

@@ -25,7 +25,7 @@ No script, hook or agent definition was taken.
 | `ostack-mode/playbooks/feature.md` | `poteto-mode/playbooks/feature.md` | Four steps added (intake, vocabulary gap, evidence, trace). Every step tagged with its stage. Delegation goes to the `implementer` subagent, and the worktree and arena instructions are removed. The PR step is written out. The design step says a changed rule supersedes its Decision, and the evidence step asks for a bounded or property test of a rule over a value space. |
 | `ostack-mode/playbooks/bug-fix.md` | `poteto-mode/playbooks/bug-fix.md` | Three steps added (the Requirement the bug breaks, the repro as a Test item, the trace). Focused-fix exception shortened. Publication paragraph removed. |
 | `ostack-mode/playbooks/investigation.md` | `poteto-mode/playbooks/investigation.md` | A first step added: ask the graph. |
-| `how` | `how/SKILL.md` | Other runtimes' mappings removed. The brief names this monorepo's layers. |
+| `how` | `how/SKILL.md` | Other runtimes' mappings removed. The brief names the layers `onto.toml` declares. |
 | `why` | `why/SKILL.md` | Reads the recorded Decisions before the history. |
 | `architect` | `architect/SKILL.md` | Domain types come from the ontology. A lasting choice becomes a Decision. Pointer to `arena` removed. |
 | `interrogate` | `interrogate/SKILL.md` | The fan-out is written out instead of delegated to `arena`. Reviewers are Claude models only and are sized by risk tier. |
@@ -36,3 +36,11 @@ No script, hook or agent definition was taken.
 `encode-correction` and the four agents under `.claude/agents/` were written for this repository.
 
 To see every change line by line: `python tools/check_vendored.py --diff`.
+
+## Copies made by `onto init`
+
+`onto init` scaffolds this folder, the adapted skills and the agents into an
+adopting repository, together with `tools/check_vendored.py`. In those copies
+the command that runs `onto` is the adopting repository's own. Nothing else is
+changed, so this notice, the licence and the pinned files under `upstream/`
+arrive with the skills they cover.

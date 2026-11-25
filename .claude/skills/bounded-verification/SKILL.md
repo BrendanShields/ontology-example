@@ -8,7 +8,7 @@ allowed-tools: Read, Grep, Glob, Edit, Write, Bash
 
 Run the real code on every case within a bound you state, and check each result against the Requirements. No model of the code is written, so nothing can drift from it. What you get is "every case within the bound". It is never a proof, and you never call it one.
 
-The worked example is `apps/call-qa-agent/tests/bounded/`: `explore.py` (three explorers), `mutants.py`, `statechart.py`, and Test items TST-0008 to TST-0010.
+The worked example is the `tests/bounded/` folder of the example app in the repository this framework comes from: `explore.py` (three explorers), `mutants.py`, `statechart.py`, and one Test item per explorer.
 
 ## When it fits, and when it does not
 
