@@ -8,8 +8,10 @@ import subprocess
 import time
 
 import pytest
-from onto import cli
+import yaml
+from onto import cli, gen
 from onto.cli import main
+from onto.config import load_config
 from onto.testing import scratch_repo
 
 INDEX = "prov/verify.json"
@@ -48,10 +50,47 @@ enums:
 """
 
 
-@pytest.fixture
-def repo(tmp_path, monkeypatch):
+def withdraw_bindings(node) -> None:
+    """Take every `binding` and `precondition_of` annotation out of a glossary, in place."""
+    if isinstance(node, dict):
+        annotations = node.get("annotations")
+        if isinstance(annotations, dict):
+            for key in ("binding", "precondition_of"):
+                annotations.pop(key, None)
+            if not annotations:
+                del node["annotations"]
+        for value in node.values():
+            withdraw_bindings(value)
+    elif isinstance(node, list):
+        for value in node:
+            withdraw_bindings(value)
+
+
+@pytest.fixture(scope="module")
+def unbound(tmp_path_factory):
+    """This repository's ontology layer with no term bound as a rule or a computed slot.
+
+    What proves a bound rule is a done Requirement of the repository itself, and a
+    scratch repository starts with none. These tests are about `onto verify`, so
+    they start from a glossary `onto rules` has nothing to hold against, and the
+    two that are about the rules gate bring a bound rule of their own.
+    """
     pytest.importorskip("linkml")
-    scratch = scratch_repo(tmp_path)
+    root = scratch_repo(tmp_path_factory.mktemp("unbound")).root
+    cfg = load_config(root)
+    for context in cfg.contexts.values():
+        glossary = yaml.safe_load(context.schema.read_text(encoding="utf-8"))
+        withdraw_bindings(glossary)
+        context.schema.write_text(yaml.safe_dump(glossary, sort_keys=False), encoding="utf-8")
+        if context.bindings_json is not None:
+            context.bindings_json.unlink(missing_ok=True)
+    gen.generate(cfg)
+    return root
+
+
+@pytest.fixture
+def repo(unbound, tmp_path, monkeypatch):
+    scratch = scratch_repo(tmp_path, unbound)
     monkeypatch.setenv("ONTO_ROOT", str(scratch.root))
     monkeypatch.delenv("ONTO_TASK", raising=False)
     return scratch
