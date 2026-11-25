@@ -235,6 +235,17 @@ def test_input_that_cannot_be_read_logs_no_planted_phrase(files, capsys, logged,
     assert (code, reached) == (2, [])
 
 
+def test_an_error_nobody_expected_logs_no_planted_phrase(files, capsys, logged, monkeypatch):
+    def fails(*given):
+        raise RuntimeError(f"could not handle {SPOKEN} {REASONED}")
+
+    monkeypatch.setattr(cli, "replay", fails)
+
+    code, reached = run(evaluate(files, "call", "--replay", str(files["steps"])), capsys, logged)
+
+    assert (code, reached) == (2, [])
+
+
 def test_the_ledger_and_its_commands_hold_no_planted_phrase(files, tmp_path, capsys, logged):
     ledger = tmp_path / "ledger.jsonl"
     on_ledger = [str(ledger), CALL["call_id"], SCORECARD["scorecard_id"]]
