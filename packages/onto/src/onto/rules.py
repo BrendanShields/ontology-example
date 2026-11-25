@@ -246,7 +246,12 @@ class _Producers(ast.NodeVisitor):
     def _enter(self, node, function: bool) -> None:
         self._scope.append(node.name)
         self._functions += function
-        self.generic_visit(node)
+        if function:
+            # A default or an annotation in the signature names a term without producing it.
+            for child in (*node.decorator_list, *node.body):
+                self.visit(child)
+        else:
+            self.generic_visit(node)
         self._functions -= function
         self._scope.pop()
 
@@ -426,11 +431,20 @@ def _proof(ws, ctx: Context, glossary: Glossary, binding: Binding, rows: dict):
             for name in item.values("uses_terms")
         )
     ]
+
+    def tests_of(item) -> dict[str, str | None]:
+        """The Tests of this context that verify the Requirement: another context's Test
+        speaks another glossary, so what it shows is not about this term."""
+        row = rows.get(item.id)
+        return {
+            test: result
+            for test, result in (row.tests if row else {}).items()
+            if test in ws.by_id and ws.by_id[test].context == ctx.name
+        }
+
     proofs = []
     for item in using:
-        row = rows.get(item.id)
-        tests = row.tests if row else {}
-        passing = tuple(sorted(test for test, result in tests.items() if result == "pass"))
+        passing = tuple(sorted(test for test, result in tests_of(item).items() if result == "pass"))
         if item.status == "done" and passing:
             proofs.append(Proof(item.id, passing))
     if proofs:
@@ -439,10 +453,10 @@ def _proof(ws, ctx: Context, glossary: Glossary, binding: Binding, rows: dict):
     name = binding.term
     accepted = (
         "Accepted: a Requirement with status done that lists it in uses_terms, verified by a "
-        "Test with passing Evidence."
+        "Test of the same bounded context with passing Evidence."
     )
     done = [item for item in using if item.status == "done"]
-    tested = [item for item in done if rows.get(item.id) and rows[item.id].tests]
+    tested = [item for item in done if tests_of(item)]
     if not using:
         found = f"no Requirement of {ctx.name} lists {name} in uses_terms"
         fix = (
@@ -455,7 +469,8 @@ def _proof(ws, ctx: Context, glossary: Glossary, binding: Binding, rows: dict):
         found = f"{name} is used by {states}, and none of them is done"
         fix = "finish the Requirement: it is done when `onto trace` holds for it"
     elif not tested:
-        found = f"{name} is used by {_listed([i.id for i in done])}, which no Test verifies"
+        users = _listed([i.id for i in done])
+        found = f"{name} is used by {users}, which no Test of {ctx.name} verifies"
         fix = (
             f'`onto new Test bounded_context={ctx.name} title="..." verifies={done[0].id} '
             "path=<file>::<test>`, then `uv run pytest --onto-evidence`"
@@ -465,7 +480,7 @@ def _proof(ws, ctx: Context, glossary: Glossary, binding: Binding, rows: dict):
             [
                 f"{test} ({result or 'no evidence'})"
                 for item in tested
-                for test, result in sorted(rows[item.id].tests.items())
+                for test, result in sorted(tests_of(item).items())
             ]
         )
         found = f"{name} is used by {_listed([i.id for i in tested])}, whose Tests are {results}"

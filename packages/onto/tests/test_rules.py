@@ -225,6 +225,21 @@ def test_reading_a_rule_is_not_producing_it(repo, capsys, reading):
     assert problems(capsys) == (1, [("error", "unbound-rule", "RefusalRule.OVER_LIMIT")])
 
 
+@pytest.mark.parametrize(
+    "naming",
+    [
+        "def refuse(order, rule=RefusalRule.OVER_LIMIT):\n    return rule\n",
+        "def refuse(order, *, rule=RefusalRule.OVER_LIMIT):\n    return rule\n",
+        "def refuse(order) -> Literal[RefusalRule.OVER_LIMIT]:\n    return order.rule\n",
+        "def refuse(rule: Literal[RefusalRule.OVER_LIMIT]):\n    return rule\n",
+    ],
+    ids=["default", "keyword-default", "return-annotation", "argument-annotation"],
+)
+def test_naming_a_rule_in_a_signature_is_not_producing_it(repo, capsys, naming):
+    shop(repo, checks=CHECKS.replace("RefusalRule.OVER_LIMIT", "None") + "\n\n" + naming)
+    assert problems(capsys) == (1, [("error", "unbound-rule", "RefusalRule.OVER_LIMIT")])
+
+
 def test_a_computed_slot_is_bound_only_where_a_generated_class_is_given_it(repo, capsys):
     elsewhere = "def place(lines):\n    return dict(total=sum(lines))\n"
     shop(repo, place=elsewhere)
@@ -253,7 +268,7 @@ def test_code_outside_the_domain_layer_counts_only_when_it_is_on_the_write_path(
         ),
         (
             lambda repo: (repo.root / "work/TST-0001.md").unlink(),
-            "total is used by REQ-0001, which no Test verifies",
+            "total is used by REQ-0001, which no Test of shop verifies",
             "onto new Test bounded_context=shop",
         ),
         (
@@ -296,6 +311,25 @@ def test_a_requirement_of_another_context_proves_nothing(repo, capsys):
     code, answer = rules(capsys)
     found = [(p["rule"], p["subject"]) for p in answer["problems"]]
     assert (code, found) == (1, [("unproven-rule", "total")])
+
+
+def test_a_test_of_another_context_proves_nothing(repo, capsys):
+    shop(repo)
+    stall(repo)
+    repo.item("TST-0001", bounded_context="stall", verifies=["REQ-0001"])
+    code, answer = rules(capsys)
+    assert code == 1
+    assert {(p["rule"], p["subject"]) for p in answer["problems"]} == {
+        ("unproven-rule", term) for term in EVERY_TERM
+    }
+    assert "which no Test of shop verifies" in answer["problems"][0]["message"]
+
+    repo.item("TST-0002", bounded_context="shop", verifies=["REQ-0001"])
+    repo.item("EVD-0002", of_test="TST-0002", result="pass")
+    code, answer = rules(capsys)
+    assert (code, answer["problems"]) == (0, [])
+    proofs = [b["proven_by"] for c in answer["contexts"] for b in c["bindings"]]
+    assert "TST-0001" not in json.dumps(proofs) and "TST-0002" in json.dumps(proofs)
 
 
 @pytest.mark.parametrize(
