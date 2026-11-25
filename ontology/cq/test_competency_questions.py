@@ -93,6 +93,7 @@ def test_cq06_gives_the_impact_of_changing_a_term(graph, questions):
     assert sorted({row["requirement"] for row in rows}) == [
         *(f"REQ-000{n}" for n in range(1, 6)),
         "REQ-0010",
+        *(f"REQ-00{n}" for n in range(12, 16)),
     ]
     assert {"TST-0001", "TST-0004"} <= {row.get("test") for row in rows}
 

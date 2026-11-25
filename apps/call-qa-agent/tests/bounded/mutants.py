@@ -77,6 +77,7 @@ MUTANTS = [
     Mutant("unknown-criterion-recorded", _GUARDRAILS, "if finding.criterion not in criteria:", "if False:", "session", "G3"),
     Mutant("wrong-rule-named", _GUARDRAILS, "rejection_rule=RejectionRule.UNKNOWN_UTTERANCE", "rejection_rule=RejectionRule.MISSING_CITATION", "session", "G3"),
     Mutant("rejection-names-another-criterion", _GUARDRAILS, "rejection_rule=RejectionRule.DUPLICATE_FINDING,\n                criterion=finding.criterion,", "rejection_rule=RejectionRule.DUPLICATE_FINDING,\n                criterion='zz',", "session", "G3"),
+    Mutant("malformed-proposal-misnamed", "session.py", "rejection_rule=RejectionRule.MALFORMED_FINDING", "rejection_rule=RejectionRule.MISSING_CITATION", "session", "G3"),
     Mutant("finish-ignores-missing", _GUARDRAILS, "if criterion.criterion_id not in judged", "if False", "session", "G4"),
     Mutant("evaluation-without-all-findings", "session.py", "if not rejections and self.evaluation is None:", "if self.evaluation is None:", "session", "G4"),
     Mutant("finish-changes-the-citations", "session.py", _OUTSTANDING, _OUTSTANDING + "        self.findings[:] = [f." + _RECITED + " for f in self.findings]\n", "session", "G4"),
