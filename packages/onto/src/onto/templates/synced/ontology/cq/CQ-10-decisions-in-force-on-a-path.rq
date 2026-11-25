@@ -6,7 +6,8 @@
 # into a regular expression here the way `onto slice` reads it, and a test
 # holds the two readings together. The first REPLACE writes a backslash before
 # each character a regular expression would read as its own, in the form
-# Oxigraph takes a replacement in.
+# Oxigraph takes a replacement in. `**/` and `**` are held as two control
+# characters while `*` is rewritten: no file name a glob is written for has them.
 PREFIX wf:   <{{base_uri}}/ontology/workflow/>
 PREFIX prov: <http://www.w3.org/ns/prov#>
 
@@ -17,9 +18,9 @@ SELECT ?path ?decision ?glob ?title WHERE {
     FILTER (?decided IN ("done", "superseded"))
   }
   BIND (REPLACE(STR(?glob), "([.+^$(){}|\\[\\]\\\\])", "\\$1") AS ?escaped)
-  BIND (REPLACE(REPLACE(?escaped, "\\*\\*/", "<dirs>"), "\\*\\*", "<any>") AS ?marked)
+  BIND (REPLACE(REPLACE(?escaped, "\\*\\*/", "\u0001"), "\\*\\*", "\u0002") AS ?marked)
   BIND (REPLACE(REPLACE(?marked, "\\*", "[^/]*"), "\\?", "[^/]") AS ?within)
-  BIND (REPLACE(REPLACE(?within, "<dirs>", "(.*/)?"), "<any>", ".*") AS ?pattern)
+  BIND (REPLACE(REPLACE(?within, "\u0001", "(.*/)?"), "\u0002", ".*") AS ?pattern)
   FILTER REGEX(?path, CONCAT("^", ?pattern, "$"))
 }
 ORDER BY ?decision ?glob

@@ -263,6 +263,8 @@ GLOBS = (
     "src/v1.2/(new)/a+b.py",
     "pages/[id]/{x}|y^z$.tsx",
     "back\\slash.py",
+    "angle/<any>",
+    "<dirs>angle.py",
 )
 PATHS = (
     "apps/a.py",
@@ -290,6 +292,10 @@ PATHS = (
     "pages/[id]/{x}",
     "back\\slash.py",
     "backslash.py",
+    "angle/<any>",
+    "angle/b.py",
+    "<dirs>angle.py",
+    "q/angle.py",
 )
 
 
