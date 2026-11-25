@@ -484,25 +484,64 @@ def test_a_decision_joins_the_slice_of_work_that_touches_a_file_it_affects(repo)
     assert given["affects"] == ["apps/**/agent.py"] and given["affected_files"] == [APP_FILE]
 
 
-def test_a_file_can_be_named_for_work_that_is_not_in_hand(repo, capsys):
+def test_a_task_named_outright_is_given_the_files_of_the_branch(repo, monkeypatch, capsys):
     in_hand(repo)
     repo.item("REQ-0002")
-    repo.item("TASK-0002", status="ready", implements=["REQ-0002"])
+    repo.item("TASK-0002", status="in_progress", implements=["REQ-0002"])  # no one Task in hand
+    repo.item("DEC-0001", uses_terms=["Scorecard"], affects=["apps/**"])
+    committed(repo)
+    repo.write(APP_FILE, "x = 1\n")
+    assert slicing.current_task(repo.ws()) is None
+
+    for task, in_hand_is in (("TASK-0001", None), ("TASK-0002", None), ("TASK-0002", "TASK-0001")):
+        if in_hand_is:
+            monkeypatch.setenv("ONTO_TASK", in_hand_is)
+        assert main(["slice", "--task", task, "--format", "json"]) == 0
+        (given,) = json.loads(capsys.readouterr().out)["decisions_in_force"]
+        assert (given["id"], given["affected_files"]) == ("DEC-0001", [APP_FILE]), task
+
+
+def test_a_file_can_be_named_beside_what_the_branch_changed(repo, capsys):
+    in_hand(repo)
     repo.item("DEC-0001", uses_terms=["Scorecard"], affects=["docs/*.md"])
     repo.item("DEC-0002", uses_terms=["Scorecard"], affects=["apps/**"])
     committed(repo)
     repo.write(APP_FILE, "x = 1\n")
     ws = repo.ws()
 
-    # TASK-0002 is not the task in hand, so the branch's changes are not taken to be its own.
-    assert [d.id for d in slicing.build(ws, task="TASK-0001").decisions] == ["DEC-0002"]
-    assert slicing.build(ws, task="TASK-0002").decisions == []
-    named = slicing.build(ws, task="TASK-0002", files=["docs/guide.md"])
-    assert named.affecting == {"DEC-0001": ["docs/guide.md"]}
-    assert slicing.build(ws, task="TASK-0002", files=["docs/deep/guide.md"]).decisions == []
+    assert slicing.build(ws, task="TASK-0001").affecting == {"DEC-0002": [APP_FILE]}
+    named = slicing.build(ws, task="TASK-0001", files=["docs/guide.md"])
+    assert named.affecting == {"DEC-0001": ["docs/guide.md"], "DEC-0002": [APP_FILE]}
+    deep = slicing.build(ws, task="TASK-0001", files=["docs/deep/guide.md"])
+    assert list(deep.affecting) == ["DEC-0002"]
 
-    assert main(["slice", "--term", "Finding", "--file", "docs/guide.md"]) == 0
-    assert "DEC-0001" in capsys.readouterr().out
+    # A term slice is of no Task: only the files named count.
+    assert main(["slice", "--term", "Finding", "--file", "docs/guide.md", "--format", "json"]) == 0
+    given = json.loads(capsys.readouterr().out)["decisions_in_force"]
+    assert [d["id"] for d in given] == ["DEC-0001"]
+
+
+def test_a_file_is_named_from_where_the_person_stands_and_a_folder_for_its_files(
+    repo, monkeypatch, capsys
+):
+    repo.item("DEC-0001", uses_terms=["Scorecard"], affects=["apps/**/agent.py"])
+    repo.write(APP_FILE, "x = 1\n")
+    folder = (repo.root / APP_FILE).parent
+
+    def given(*names: str) -> dict:
+        flags = [flag for name in names for flag in ("--file", name)]
+        assert main(["slice", "--term", "Finding", "--format", "json", *flags]) == 0
+        found = json.loads(capsys.readouterr().out)["decisions_in_force"]
+        return {d["id"]: d["affected_files"] for d in found}
+
+    monkeypatch.chdir(folder)
+    assert given("agent.py") == {"DEC-0001": [APP_FILE]}
+    assert given("other.py") == {}
+    monkeypatch.chdir(repo.root)
+    assert given("agent.py") == {}
+    assert given("apps") == {"DEC-0001": [APP_FILE]}
+    assert given(".") == {"DEC-0001": [APP_FILE]}
+    assert given("ontology") == {}
 
 
 def test_only_a_decision_in_force_constrains_a_path(repo):

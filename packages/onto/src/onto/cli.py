@@ -156,7 +156,7 @@ def _slice(args) -> int:
         terms=args.term or None,
         context=args.context,
         depth=args.depth,
-        files=args.file or None,
+        files=[_from_here(ws, name) for name in args.file or ()] or None,
     )
     fmt = "context-json" if args.for_subagent else args.format
     if fmt == "json":
@@ -167,6 +167,12 @@ def _slice(args) -> int:
         print(text, end="")
         print(f"(about {slicing.estimate_tokens(text)} tokens, estimated)", file=sys.stderr)
     return 0
+
+
+def _from_here(ws, name: str) -> str:
+    """A path as the person wrote it: from where they stand, when that is inside the repository."""
+    here = Path.cwd().resolve()
+    return str(here / name) if here.is_relative_to(ws.cfg.root) else name
 
 
 # --- file-level gates ------------------------------------------------------------
@@ -428,9 +434,7 @@ def _trace(args) -> int:
         if args.collect:
             run = evidence.collect(ws, evidence.tests_for(ws, scope))
             if not run.ok:
-                print(
-                    f"onto trace: the test run could not complete\n{run.output}", file=sys.stderr
-                )
+                print(f"onto trace: the test run could not complete\n{run.output}", file=sys.stderr)
                 return 1
 
         graph = build_graph(ws)
@@ -731,8 +735,8 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--file",
         action="append",
-        help="a file the work touches: a Decision whose affects globs match it joins the "
-        "slice; repeatable (for the task in hand the files the branch changed are added)",
+        help="a file or folder the work touches: a Decision whose affects globs match it "
+        "joins the slice; repeatable (for a Task the files the branch changed are added)",
     )
     p.add_argument("--context")
     p.add_argument("--depth", type=int, default=1, choices=(0, 1))

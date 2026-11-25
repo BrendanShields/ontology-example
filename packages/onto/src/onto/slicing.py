@@ -8,7 +8,7 @@ them and the requirements already established on them.
 
 A Decision can also constrain files instead of terms, through the globs in its
 `affects`. It joins the slice of work that touches a matching file: a file
-named with `--file`, or for the task in hand a file the branch changed.
+named with `--file`, or for a Task a file the branch changed.
 """
 
 from __future__ import annotations
@@ -22,6 +22,7 @@ from dataclasses import dataclass, field
 
 from .config import matches
 from .glossary import Glossary, Term
+from .workitems import repository_files
 from .workspace import WorkItem, Workspace
 
 DEFAULT_BUDGET = 3000  # tokens. The spike's exit criterion for a slice.
@@ -118,10 +119,21 @@ def decisions_affecting(ws: Workspace, files: set[str] | None) -> dict[str, list
 
 
 def touched_files(ws: Workspace, task: WorkItem | None, named: list[str] | None) -> set[str] | None:
-    """The files the sliced work touches: those named, and for the task in hand the branch's."""
-    files = {ws.cfg.rel(name) for name in named or ()}
-    in_hand = current_task(ws)
-    if task is None or in_hand is None or in_hand.id != task.id:
+    """The files the sliced work touches: those named, and for a Task those the branch changed.
+
+    Which Task of several a changed file belongs to is not recorded, so each
+    Task sliced on the branch is given them all. A folder is named for the
+    files in it.
+    """
+    files: set[str] = set()
+    for name in named or ():
+        rel = ws.cfg.rel(name)
+        if (ws.cfg.root / rel).is_dir():
+            inside = "" if rel == "." else rel + "/"
+            files.update(f for f in repository_files(ws.cfg) if f.startswith(inside))
+        else:
+            files.add(rel)
+    if task is None:
         return files
     from .gates import changed_files  # gates needs the graph; a term slice does not
 
