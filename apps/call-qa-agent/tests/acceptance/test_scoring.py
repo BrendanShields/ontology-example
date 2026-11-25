@@ -126,7 +126,6 @@ def test_an_evaluation_in_which_nothing_applied_goes_to_a_person(scorecard):
     assert evaluation.disposition == "NEEDS_REVIEW"
 
 
-@pytest.mark.xfail(strict=True, reason="REQ-0010 is not implemented yet: TASK-0005")
 @pytest.mark.parametrize(
     "criteria",
     [["c0", "c0"], ["c0"], [], ["c0", "c1", "c1"], ["c0", "zz"]],

@@ -62,13 +62,14 @@ CALL = Call.model_validate(
 SPOKEN = {1, 2}
 
 PROPERTIES = {
-    # scoring: REQ-0004, REQ-0005, REQ-0006
+    # scoring: REQ-0004, REQ-0005, REQ-0006, REQ-0010
     "S1": "the score is between 0 and 100, and the Evaluation carries the score of its Findings",
     "S2": "a NOT_MET Finding for a critical Criterion gives FAIL and NEEDS_REVIEW",
     "S3": "PASS exactly when no critical Criterion is NOT_MET and the score is at least the pass mark",
     "S4": "FINAL exactly when no critical Criterion is NOT_MET and at least one Criterion applied",
     "S5": "the Evaluation carries exactly the Findings it was given, in order",
     "S6": "the score is the met share of the weight that applied, rounded down, and 0 when nothing applied",
+    "S7": "there is an Evaluation exactly when the Findings given are one for each Criterion",
     # session: REQ-0001, REQ-0002, REQ-0003
     "G1": "a rejected proposal is not recorded and changes nothing",
     "G2": "an accepted proposal is recorded once, after the Findings already recorded",
@@ -127,6 +128,9 @@ def check_scoring(max_criteria: int = 3, max_weight: int = 3) -> dict:
     S1 to S6 leave one score, outcome and disposition for each case, so what
     follows from them (raising a Finding never lowers the score, for one) is
     not checked again: no fault could be reported by it first.
+
+    For S7 the Findings are any list of 0 to one more than the number of
+    Criteria, over the Criteria and one unknown one.
     """
     findings = {
         (index, outcome): Finding(
@@ -135,8 +139,26 @@ def check_scoring(max_criteria: int = 3, max_weight: int = 3) -> dict:
         for index in range(max_criteria)
         for outcome in OUTCOMES
     }
-    evaluations = 0
+    evaluations = finding_lists = 0
     for count in range(1, max_criteria + 1):
+        ids = criterion_ids(count)
+        card = make_scorecard([1] * count, [False] * count)
+        for length in range(0, count + 2):
+            for criteria in itertools.product([*ids, "zz"], repeat=length):
+                finding_lists += 1
+                given = [
+                    Finding(criterion=c, finding_outcome=MET, cited_utterances=[1], rationale="r")
+                    for c in criteria
+                ]
+                try:
+                    scoring.conclude(CALL, card, given)
+                    answer = "an Evaluation"
+                except ValueError:
+                    answer = "no Evaluation"
+                except Exception as error:
+                    answer = f"raised {type(error).__name__}"
+                want = "an Evaluation" if sorted(criteria) == ids else "no Evaluation"
+                require(answer == want, "S7", criteria=ids, findings_for=criteria, got=answer)
         for weights in itertools.product(range(1, max_weight + 1), repeat=count):
             for critical in itertools.product((False, True), repeat=count):
                 card = make_scorecard(weights, critical)
@@ -178,7 +200,7 @@ def check_scoring(max_criteria: int = 3, max_weight: int = 3) -> dict:
                         )
                         require(final == (not critical_failure and applied > 0), "S4", **case)
                         require(_judgements(evaluation.findings) == _judgements(given), "S5", **case)
-    return {"evaluations": evaluations}
+    return {"evaluations": evaluations, "finding_lists": finding_lists}
 
 
 def _judgements(findings: Iterable[Finding]) -> list[tuple[str, str]]:

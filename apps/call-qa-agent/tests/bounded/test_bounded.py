@@ -11,7 +11,11 @@ from . import explore
 
 def test_scoring_holds_for_every_scorecard_within_the_bound():
     # 1 to 3 Criteria, each 3 weights x critical or not x 3 outcomes, times 101 pass marks.
-    assert explore.check_scoring(max_criteria=3, max_weight=3) == {"evaluations": 623_574}
+    # For REQ-0010, every list of up to one Finding more than the Criteria: 7 + 40 + 341.
+    assert explore.check_scoring(max_criteria=3, max_weight=3) == {
+        "evaluations": 623_574,
+        "finding_lists": 388,
+    }
 
 
 def test_session_holds_in_every_state_within_the_bound():

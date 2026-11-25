@@ -59,6 +59,8 @@ MUTANTS = [
     Mutant("only-not-met-applies", _SCORING, _APPLIES, "if f.finding_outcome == FindingOutcome.NOT_MET", "scoring", "S6"),
     Mutant("score-rounds-up", _SCORING, "met * 100 // applied if applied else 0", "-(-met * 100 // applied) if applied else 0", "scoring", "S6"),
     Mutant("score-ignores-weight", _SCORING, "criterion.criterion_id: criterion.weight for", "criterion.criterion_id: 1 for", "scoring", "S6"),
+    Mutant("evaluation-from-any-findings", _SCORING, "    if judged != sorted(criterion.criterion_id for criterion in scorecard.criteria):", "    if False:", "scoring", "S7"),
+    Mutant("duplicate-findings-concluded", _SCORING, "    judged = sorted(finding.criterion for finding in findings)", "    judged = sorted({finding.criterion for finding in findings})", "scoring", "S7"),
     Mutant("rejected-finding-recorded", "session.py", "        if not rejections:\n            self.findings.append(finding)", "        self.findings.append(finding)", "session", "G1"),
     Mutant("finding-recorded-first", "session.py", "self.findings.append(finding)", "self.findings.insert(0, finding)", "session", "G2"),
     Mutant("duplicate-finding-recorded", _GUARDRAILS, "elif any(existing.criterion == finding.criterion for existing in recorded):", "elif False:", "session", "G3"),
