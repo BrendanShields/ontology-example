@@ -6,32 +6,73 @@
 
 Exit codes: 0 an Evaluation was produced, 1 none was (the Rejections are
 printed), 2 the request could not be made.
+
+Whatever this writes besides the result on stdout names things and counts
+them and quotes nothing from a Call or a rationale (REQ-0008, DEC-0009).
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import logging
+import re
 import sys
+import traceback
 from pathlib import Path
 
 import anthropic
 import yaml
+from pydantic import BaseModel, ValidationError
 
 from .agent import EvaluationIncomplete, Settings, Trace, evaluate, make_client, with_overrides
-from .generated import Call, Scorecard
+from .generated import Call, Criterion, FindingOutcome, Scorecard, Utterance
 from .prompts import system_prompt
 from .replay import load_steps, replay
-from .tools import render_rejections, tool_definitions
+from .tools import FINISH_EVALUATION, RECORD_FINDING, render_rejections, tool_definitions
+
+_FIELDS = {name for cls in (Call, Utterance, Scorecard, Criterion) for name in cls.model_fields}
+
+
+class Unreadable(ValueError):
+    """A file the command was given cannot be used. The message quotes nothing from the file."""
+
+
+def _parsed(path: Path, cls: type[BaseModel]):
+    """The file as an instance of a generated class, or Unreadable saying where it went wrong."""
+    try:
+        return cls.model_validate(yaml.safe_load(path.read_text(encoding="utf-8")))
+    except OSError as error:
+        raise Unreadable(f"{path}: {error.strerror or type(error).__name__}") from None
+    except UnicodeDecodeError:
+        raise Unreadable(f"{path}: not UTF-8 text") from None
+    except yaml.YAMLError as error:
+        mark = getattr(error, "problem_mark", None)
+        where = f" at line {mark.line + 1}, column {mark.column + 1}" if mark else ""
+        raise Unreadable(f"{path}: not valid YAML{where}") from None
+    except ValidationError as error:
+        # The location and the kind of each error. Not its message and not the value: a
+        # misplaced Utterance would be echoed. A field the ontology does not have is not named.
+        problems = sorted(
+            {
+                ".".join(
+                    str(part) if isinstance(part, int) or part in _FIELDS else "<undeclared>"
+                    for part in item["loc"]
+                )
+                + f" ({item['type']})"
+                for item in error.errors(include_url=False, include_input=False)
+            }
+        )
+        raise Unreadable(f"{path}: not a valid {cls.__name__}: {'; '.join(problems)}") from None
 
 
 def load_call(path: Path) -> Call:
-    return Call.model_validate(yaml.safe_load(path.read_text(encoding="utf-8")))
+    return _parsed(path, Call)
 
 
 def load_scorecard(path: Path) -> Scorecard:
     """The Scorecard in a file. Raises ValueError if two of its Criteria share a criterion_id."""
-    scorecard = Scorecard.model_validate(yaml.safe_load(path.read_text(encoding="utf-8")))
+    scorecard = _parsed(path, Scorecard)
     names = [criterion.criterion_id for criterion in scorecard.criteria]
     repeated = sorted({name for name in names if names.count(name) > 1})
     if repeated:
@@ -73,6 +114,28 @@ def main(argv: list[str] | None = None) -> int:
         show.add_argument("--scorecard", type=Path, required=True)
 
     args = parser.parse_args(argv)
+    # At DEBUG the SDK logs each request whole, which is the whole Call (DEC-0009).
+    held = logging.root.manager.disable
+    logging.disable(logging.INFO)
+    try:
+        return _run(args)
+    except Unreadable as error:
+        print(f"call-qa: {error}", file=sys.stderr)
+        return 2
+    except Exception as error:
+        # The message of an error nobody expected can quote what was being handled.
+        frame = traceback.extract_tb(error.__traceback__)[-1]
+        where = "/".join(Path(frame.filename).parts[-2:])
+        print(
+            f"call-qa: failed with {type(error).__name__} in {frame.name} ({where}:{frame.lineno})",
+            file=sys.stderr,
+        )
+        return 2
+    finally:
+        logging.disable(held)
+
+
+def _run(args) -> int:
     scorecard = load_scorecard(args.scorecard)
     if args.command == "tools":
         print(json.dumps(tool_definitions(scorecard), indent=2))
@@ -88,7 +151,7 @@ def _evaluate(args, scorecard: Scorecard) -> int:
     trace = Trace()
     try:
         if args.replay:
-            evaluation = replay(call, scorecard, load_steps(args.replay), trace)
+            evaluation = replay(call, scorecard, _steps(args.replay), trace)
         else:
             settings = with_overrides(
                 Settings.from_env(),
@@ -100,25 +163,29 @@ def _evaluate(args, scorecard: Scorecard) -> int:
             )
             evaluation = evaluate(call, scorecard, make_client(settings), settings, trace)
     except EvaluationIncomplete as incomplete:
-        _show_trace(args, trace)
+        _show_trace(args, trace, scorecard)
         print(f"No Evaluation: {incomplete.reason}.", file=sys.stderr)
         if incomplete.rejections:
             print(render_rejections(incomplete.rejections), file=sys.stderr)
         return 1
-    except anthropic.APIConnectionError as error:
-        print(f"call-qa: could not reach the API: {error}", file=sys.stderr)
+    except anthropic.APIConnectionError:
+        print("call-qa: could not reach the API.", file=sys.stderr)
         return 2
     except anthropic.RateLimitError:
         print("call-qa: rate limited after retries. Try again shortly.", file=sys.stderr)
         return 2
     except anthropic.APIStatusError as error:
-        print(f"call-qa: the API returned {error.status_code}: {error.message}", file=sys.stderr)
+        print(f"call-qa: the API returned {error.status_code}{_kind(error)}.", file=sys.stderr)
         return 2
     except anthropic.AnthropicError as error:  # no credentials, bad configuration
-        print(f"call-qa: {error}", file=sys.stderr)
+        print(
+            f"call-qa: the request could not be made ({type(error).__name__}). "
+            "Check the credentials and the platform settings.",
+            file=sys.stderr,
+        )
         return 2
 
-    _show_trace(args, trace)
+    _show_trace(args, trace, scorecard)
     data = evaluation.model_dump(mode="json", exclude_none=True)
     if args.json:
         print(json.dumps(data, indent=2))
@@ -127,15 +194,65 @@ def _evaluate(args, scorecard: Scorecard) -> int:
     return 0
 
 
-def _show_trace(args, trace: Trace) -> None:
+def _steps(path: Path) -> list[dict]:
+    try:
+        return load_steps(path)
+    except OSError as error:
+        raise Unreadable(f"{path}: {error.strerror or type(error).__name__}") from None
+    except json.JSONDecodeError as error:
+        where = f"line {error.lineno}, column {error.colno}"
+        raise Unreadable(f"{path}: not valid JSON at {where}") from None
+    except ValueError as error:  # load_steps says which step, by its number
+        raise Unreadable(f"{path}: {error}") from None
+
+
+def _kind(error: anthropic.APIStatusError) -> str:
+    """The API's own name for the error and the id of the request. Not its message."""
+    body = error.body if isinstance(error.body, dict) else {}
+    detail = body.get("error") if isinstance(body.get("error"), dict) else {}
+    kind = detail.get("type")
+    named = f" ({kind})" if isinstance(kind, str) and re.fullmatch(r"[a-z_]+", kind) else ""
+    request = getattr(error, "request_id", None)
+    return named + (f", request {request}" if request else "")
+
+
+def _show_trace(args, trace: Trace, scorecard: Scorecard) -> None:
     if not args.trace:
         return
     for number, step in enumerate(trace.steps, start=1):
-        mark = "REJECTED" if step.rejected else "ok"
-        print(f"[{number}] {step.tool} {json.dumps(step.tool_input)} -> {mark}", file=sys.stderr)
-        if step.rejected:
-            print(step.result, file=sys.stderr)
+        print(f"[{number}] {_shown(step, scorecard)}", file=sys.stderr)
     print(file=sys.stderr)
+
+
+def _shown(step, scorecard: Scorecard) -> str:
+    """One step of the trace: what was proposed, by name and number, and what became of it.
+
+    Anything the model or a replay file wrote is shown only if it is a name the
+    Scorecard or the glossary already has, or a number. The rest is a "?".
+    """
+    if step.tool not in (RECORD_FINDING, FINISH_EVALUATION):
+        return "a tool that does not exist -> REJECTED"
+    shown = step.tool
+    if step.tool == RECORD_FINDING:
+        proposal = step.tool_input if isinstance(step.tool_input, dict) else {}
+        criteria = [criterion.criterion_id for criterion in scorecard.criteria]
+        outcomes = [outcome.value for outcome in FindingOutcome]
+        criterion = proposal.get("criterion")
+        outcome = proposal.get("finding_outcome")
+        cited = proposal.get("cited_utterances")
+        numbers = isinstance(cited, list) and all(type(number) is int for number in cited)
+        shown += (
+            f" criterion={criterion if criterion in criteria else '?'}"
+            f" finding_outcome={outcome if outcome in outcomes else '?'}"
+            f" cited_utterances={cited if numbers else '?'}"
+        )
+    if not step.rejected:
+        return f"{shown} -> ok"
+    try:
+        rules = {rejection["rejection_rule"] for rejection in json.loads(step.result)["rejections"]}
+    except (ValueError, KeyError, TypeError):
+        return f"{shown} -> REJECTED"
+    return f"{shown} -> REJECTED ({', '.join(sorted(rules))})"
 
 
 if __name__ == "__main__":

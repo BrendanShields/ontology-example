@@ -40,6 +40,10 @@ uv run call-qa evaluate apps/call-qa-agent/data/calls/CALL-0002.yaml \
   --replay apps/call-qa-agent/data/replays/CALL-0002.json --trace
 ```
 
+The evaluation goes to stdout and holds every rationale. `--trace` goes to
+stderr and shows each tool call by criterion, outcome, cited utterance numbers
+and the rules it broke.
+
 Against Claude:
 
 ```bash
@@ -94,8 +98,13 @@ classified `PII`, and a Requirement that uses them must carry a high risk tier.
   the model and platform you choose meet it.
 - Redact what the scorecard does not need before the transcript leaves your
   boundary. This app sends the transcript as it is given.
-- `REQ-0008`, keeping utterance text out of logs, is in progress and has no test
-  yet. The app does no logging today. Add the test before adding logging.
+- `REQ-0008` keeps utterance text out of the logs, and `DEC-0009` says what a
+  log is: stderr, every logger record made while a command runs, and every file
+  the app writes. `--trace` shows names, numbers and rule names, an unreadable
+  file is reported by position and not by content, and the SDK's loggers are
+  held at WARNING whatever `ANTHROPIC_LOG` says. Not covered: stdout, which
+  carries the evaluation and its rationales, the request to the model, which
+  carries the whole call, and anything you attach to the process yourself.
 - The transcript is untrusted input. The prompt tells the model that the call is
   material to evaluate, and the rules hold whatever the model does: it cannot
   invent a criterion, cite an utterance that is not there, set the score, or let

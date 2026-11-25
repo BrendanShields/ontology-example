@@ -47,9 +47,21 @@ def test_cq01_a_change_is_traced_to_the_requirements_it_serves(graph, questions)
     assert {row["task"] for row in rows} == {"TASK-0001", "TASK-0002", "TASK-0003"}
 
 
-def test_cq02_finds_what_is_absent(graph, questions):
-    # REQ-0008 is agreed and has no Test. REQ-0009 has none either but is a draft.
-    assert column(ask(graph, questions, "CQ-02"), "requirement") == ["REQ-0008"]
+def test_cq02_every_agreed_requirement_here_has_a_test(graph, questions):
+    assert column(ask(graph, questions, "CQ-02"), "requirement") == []
+
+
+def test_cq02_finds_what_is_absent(tmp_path):
+    repo = scratch_repo(tmp_path)
+    repo.item("REQ-0001", status="in_progress")  # agreed, and no Test verifies it
+    repo.item("REQ-0002", status="draft")  # no Test either, but not agreed yet
+    repo.item("REQ-0003", status="done")
+    repo.item("TST-0001", verifies=["REQ-0003"])
+    ws = Workspace.at(repo.root)
+
+    rows = cq.run(build_graph(ws), cq.load(ws.cfg)["CQ-02"])
+
+    assert column(rows, "requirement") == ["REQ-0001"]
 
 
 def test_cq03_leaves_out_superseded_decisions(graph, questions):
