@@ -562,6 +562,22 @@ def _created(ws, path, problems) -> int:
     return 0
 
 
+def _write(ws, args, cls: str, fields: dict) -> int:
+    from . import create
+
+    if not args.dry_run:
+        return _created(ws, *create.create(ws, cls, fields))
+    item, problems = create.draft(ws, cls, fields)
+    if problems:
+        print(report.render_text(problems), file=sys.stderr)
+    if item is None:
+        print("onto: dry run: this would be refused.", file=sys.stderr)
+        return 1
+    print(f"onto: dry run: nothing was written. {item.rel} would be:", file=sys.stderr)
+    print(item.text, end="")
+    return 0
+
+
 def _new(args) -> int:
     from . import create
 
@@ -571,12 +587,10 @@ def _new(args) -> int:
         if args.cls in ws.schema.record_classes
         else {}
     )
-    return _created(ws, *create.create(ws, args.cls, fields))
+    return _write(ws, args, args.cls, fields)
 
 
 def _ocr_new(args) -> int:
-    from . import create
-
     ws = _workspace()
     fields = {
         "title": args.title or f"Add {args.term} to the {args.context} glossary",
@@ -586,7 +600,7 @@ def _ocr_new(args) -> int:
     }
     if args.definition:
         fields["proposed_definition"] = args.definition
-    return _created(ws, *create.create(ws, "OntologyChangeRequest", fields))
+    return _write(ws, args, "OntologyChangeRequest", fields)
 
 
 def _gen(args) -> int:
@@ -629,6 +643,11 @@ def _parser() -> argparse.ArgumentParser:
 
     def fmt(p, *choices: str) -> None:
         p.add_argument("--format", choices=choices, default=choices[0])
+
+    def dry_run(p) -> None:
+        p.add_argument(
+            "--dry-run", action="store_true", help="validate and print the item; write nothing"
+        )
 
     p = command("overview", _overview, "the table of contents of the ontology")
     p.add_argument("--context")
@@ -726,6 +745,7 @@ def _parser() -> argparse.ArgumentParser:
     p = command("new", _new, "create a validated work item: onto new Requirement key=value ...")
     p.add_argument("cls", metavar="CLASS")
     p.add_argument("fields", nargs="*", metavar="key=value")
+    dry_run(p)
 
     ocr = sub.add_parser("ocr", help="ontology change requests")
     ocr_sub = ocr.add_subparsers(metavar="command", required=True)
@@ -735,6 +755,7 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--justification", required=True)
     p.add_argument("--definition")
     p.add_argument("--title")
+    dry_run(p)
 
     p = command("gen", _gen, "compile the LinkML sources into JSON Schema, SHACL and Pydantic")
     p.add_argument("--check", action="store_true", help="fail if a generated file is out of date")

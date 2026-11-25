@@ -39,10 +39,13 @@ def parse_fields(ws: Workspace, cls: str, pairs: list[str]) -> dict:
     return fields
 
 
-def create(
+def draft(
     ws: Workspace, cls: str, fields: dict, body: str = ""
-) -> tuple[Path | None, list[Violation]]:
-    """Create a work item. Returns (path, warnings) or (None, violations) if it was refused."""
+) -> tuple[WorkItem | None, list[Violation]]:
+    """The work item `create` would write, validated, with nothing written.
+
+    Returns (item, warnings) or (None, violations) if it would be refused.
+    """
     classes = tuple(c for c in ws.schema.record_classes if c not in DERIVED)
     if cls in DERIVED:
         return None, [
@@ -70,8 +73,17 @@ def create(
     problems = validate_item(ws, item)
     if errors(problems):
         return None, problems
+    return item, problems
 
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8")
+
+def create(
+    ws: Workspace, cls: str, fields: dict, body: str = ""
+) -> tuple[Path | None, list[Violation]]:
+    """Create a work item. Returns (path, warnings) or (None, violations) if it was refused."""
+    item, problems = draft(ws, cls, fields, body)
+    if item is None:
+        return None, problems
+    item.path.parent.mkdir(parents=True, exist_ok=True)
+    item.path.write_text(item.text, encoding="utf-8")
     ws.reload()
-    return path, problems
+    return item.path, problems
