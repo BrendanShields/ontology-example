@@ -41,6 +41,12 @@ def edited_file(event: dict) -> str | None:
     return None
 
 
+def readable(tool_input: dict) -> bool:
+    """False if `edits` is there and is not a list of edits: nothing can say what it writes."""
+    edits = tool_input.get("edits")
+    return edits is None or (isinstance(edits, list) and all(isinstance(e, dict) for e in edits))
+
+
 def text_after(tool_input: dict, current: str | None) -> str | None:
     """The file's text once the tool call has run. None if the call would not apply."""
     if isinstance(tool_input.get("content"), str):  # Write

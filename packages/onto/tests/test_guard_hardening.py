@@ -249,9 +249,25 @@ def test_an_approval_does_not_move_to_another_request_unasked(repo):
     assert decide(repo, request, old_string="OCR-0001", new_string="OCR-0002") == guard.ASK
 
 
-def test_an_edit_the_tool_could_not_have_sent_is_not_an_error(repo):
+def test_an_edit_the_guard_cannot_read_is_put_to_a_person(repo, monkeypatch, capsys):
     request = repo.item("OCR-0001", status="draft")
-    assert decide(repo, request, edits=["status: in_progress"]) == guard.ALLOW
+    approve = {"old_string": "status: draft", "new_string": "status: in_progress"}
+    # Not a payload the tool should send. What a tool would write from it is unknown,
+    # so the answer is neither a crash (exit 1 lets the edit through) nor allow.
+    for edits in (["status: in_progress"], [None, approve], "status: in_progress", {"0": approve}):
+        event = {
+            "hook_event_name": "PreToolUse",
+            "tool_name": "MultiEdit",
+            "tool_input": {"file_path": str(request), "edits": edits},
+        }
+        code, out = hook("guard", stdin=event, monkeypatch=monkeypatch, capsys=capsys)
+        assert code == 0 and "Traceback" not in out.err
+        answer = json.loads(out.out)["hookSpecificOutput"]
+        assert answer["permissionDecision"] == "ask"
+        assert "cannot read" in answer["permissionDecisionReason"]
+
+    assert decide(repo, repo.root / "README.md", edits=["x"]) == guard.ALLOW
+    assert decide(repo, repo.root / GENERATED, edits=["x"]) == guard.DENY
 
 
 def test_onto_new_does_not_approve_the_request_it_creates(repo, capsys):

@@ -61,6 +61,11 @@ def decide(ws: Workspace, path: str, tool_input: dict | None = None) -> tuple[st
         )
 
     if key.startswith(paths.fold(cfg, cfg.rel(cfg.work_dir)) + "/") and tool_input:
+        if not hooks.readable(tool_input):
+            return ASK, (
+                f"The guard cannot read this edit to {rel}, so it cannot tell whether the edit "
+                "approves an OntologyChangeRequest. Confirm that it does not."
+            )
         approved = _approval(ws, path, tool_input)
         if approved:
             return ASK, (
