@@ -128,7 +128,11 @@ def _coined(glossary: Glossary, rel_path: str, text: str) -> list[Violation]:
                 line=line,
                 found=name,
                 suggestions=glossary.suggest(name),
-                fix=f"use the glossary's name for it; {_ocr_hint(glossary, name)}",
+                fix=(
+                    f"look it up with `onto resolve {name}` and use the glossary's name; "
+                    f"{_ocr_hint(glossary, name)}; a helper that is no domain concept "
+                    "takes a leading underscore"
+                ),
             )
         )
 

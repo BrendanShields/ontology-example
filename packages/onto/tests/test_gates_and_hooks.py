@@ -333,6 +333,28 @@ def test_the_term_hook_only_warns_about_a_coined_class(repo, monkeypatch, capsys
     assert "warning[unknown-term]" in context["additionalContext"]
 
 
+def test_a_coined_class_passes_the_check_and_its_author_is_told_what_to_do(
+    repo, monkeypatch, capsys
+):
+    """A helper class is legitimate, so this is a warning. It must not read as nothing to do."""
+    coined = "class Zorblat:\n    pass\n\n\nclass _Tally:\n    pass\n"
+    event = write_event(repo, DOMAIN, coined)
+
+    code, out = run("check-terms", monkeypatch=monkeypatch, capsys=capsys)
+    _, hook = run(
+        "check-terms", "--changed-from-stdin", stdin=event, monkeypatch=monkeypatch, capsys=capsys
+    )
+    told = json.loads(hook.out)["hookSpecificOutput"]["additionalContext"]
+
+    assert code == 0 and "0 error(s), 1 warning(s)" in out.out
+    for said in (out.out, told):
+        assert f"{DOMAIN}:1: warning[unknown-term] class Zorblat" in said
+        assert "`onto resolve Zorblat`" in said  # look the name up
+        assert "onto ocr new --context call-qa --term Zorblat" in said  # or ask for it
+        assert "leading underscore" in said  # or say it is no domain concept
+        assert "_Tally" not in said
+
+
 def test_the_term_hook_checks_only_what_an_edit_inserted(repo, monkeypatch, capsys):
     repo.write(DOMAIN, "rubric = 1\nscore = 2\n")
     event = {
