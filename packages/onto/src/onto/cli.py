@@ -403,7 +403,7 @@ def _trace(args) -> int:
     stop = args.gate == "stop"
     event = hooks.read_event() if stop else {}
     scope = _scope(ws, args.scope)
-    branch_problems = changes.branch_problems(ws, drift=stop)
+    branch_problems = changes.branch_problems(ws, stop=stop)
     if scope is not None and not scope and not branch_problems:
         if not stop:
             print("onto trace: nothing in scope on this branch")

@@ -180,23 +180,43 @@ def coverage(rows: list[TraceRow]) -> dict[str, int]:
 # --- scope -----------------------------------------------------------------------
 
 
+def _git(cfg: Config, *args: str) -> str | None:
+    done = subprocess.run(
+        ["git", "-C", str(cfg.root), *args], capture_output=True, text=True, check=False
+    )
+    return done.stdout if done.returncode == 0 else None
+
+
+def base_refs(cfg: Config) -> tuple[str, ...]:
+    """The refs tried, in order, as the base this branch is compared with."""
+    return tuple(dict.fromkeys((cfg.base_ref, "main", "master")))
+
+
+def base_commit(cfg: Config) -> str | None:
+    """Where this branch left its base. None if no base ref is in the repository."""
+    for ref in base_refs(cfg):
+        merge_base = _git(cfg, "merge-base", "HEAD", ref)
+        if merge_base:
+            return merge_base.strip()
+    return None
+
+
+def has_commits(cfg: Config) -> bool:
+    return _git(cfg, "rev-parse", "--verify", "--quiet", "HEAD") is not None
+
+
 def changed_files(cfg: Config) -> set[str] | None:
-    """Files that differ from the base branch, plus untracked ones. None outside a git repo."""
+    """Files that differ from the base branch, plus untracked ones. None outside a git repo.
+
+    Without a base only uncommitted changes are seen: `changes.base_is_known` reports that.
+    """
 
     def git(*args: str) -> str | None:
-        done = subprocess.run(
-            ["git", "-C", str(cfg.root), *args], capture_output=True, text=True, check=False
-        )
-        return done.stdout if done.returncode == 0 else None
+        return _git(cfg, *args)
 
     if git("rev-parse", "--is-inside-work-tree") is None:
         return None
-    base = "HEAD"
-    for ref in dict.fromkeys((cfg.base_ref, "main", "master")):
-        merge_base = git("merge-base", "HEAD", ref)
-        if merge_base:
-            base = merge_base.strip()
-            break
+    base = base_commit(cfg) or "HEAD"
     # Without rename detection a moved file is listed under both of its names.
     changed = git("diff", "--name-only", "--no-renames", "--relative", base)
     untracked = git("ls-files", "--others", "--exclude-standard")

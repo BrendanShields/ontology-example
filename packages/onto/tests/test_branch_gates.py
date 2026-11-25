@@ -115,6 +115,33 @@ def test_trace_fails_on_a_branch_whose_only_change_is_the_ontology(repo, monkeyp
     assert code == 0
 
 
+def test_trace_fails_when_there_is_no_base_to_compare_the_branch_with(repo, monkeypatch, capsys):
+    git(repo, "checkout", "-q", "-b", "feature")
+    touch(repo, SHARED)
+    git(repo, "commit", "-q", "-am", "edit the workflow ontology")
+    code, out = run("trace", monkeypatch=monkeypatch, capsys=capsys)
+    assert code == 1 and changes.REQUESTED in out.out
+
+    # A CI checkout that did not fetch the base, or a default branch onto.toml does not name.
+    git(repo, "branch", "-q", "-D", "main")
+    for scope in ("all", "branch"):
+        code, out = run("trace", "--scope", scope, monkeypatch=monkeypatch, capsys=capsys)
+        assert code == 1 and f"error[{changes.BASE}]" in out.out
+        assert "origin/main" in out.out and "base_ref" in out.out and "fetch-depth" in out.out
+
+    # Nothing the agent can put right, so it does not hold the session.
+    code, out = run(*STOP, stdin={"hook_event_name": "Stop"}, monkeypatch=monkeypatch, capsys=capsys)
+    assert (code, out.err) == (0, "")
+
+
+def test_a_repository_without_commits_has_no_base_to_miss(tmp_path, monkeypatch):
+    scratch = scratch_repo(tmp_path)
+    monkeypatch.setenv("ONTO_ROOT", str(scratch.root))
+    git(scratch, "init", "-q", "-b", "trunk")
+    # Nothing is committed, so every file counts as changed and none is hidden.
+    assert unrequested(scratch) == [GLOSSARY, "ontology/shapes/gates.shacl.ttl", SHARED]
+
+
 def test_the_stop_gate_catches_a_generated_file_changed_by_any_tool(repo, monkeypatch, capsys):
     pytest.importorskip("linkml")
     target = repo.root / GENERATED
@@ -159,4 +186,4 @@ def test_outside_a_git_repository_there_is_no_branch_to_judge(tmp_path, monkeypa
     scratch = scratch_repo(tmp_path)
     monkeypatch.setenv("ONTO_ROOT", str(scratch.root))
     touch(scratch, GLOSSARY)
-    assert changes.branch_problems(scratch.ws(), drift=True) == []
+    assert changes.branch_problems(scratch.ws(), stop=True) == []

@@ -11,25 +11,58 @@ result instead: the difference between the branch and its base.
 
 from __future__ import annotations
 
-from .config import Config, matches
-from .gates import changed_files
+from .config import CONFIG_FILE, Config, matches
+from .gates import base_commit, base_refs, changed_files, has_commits
 from .guard import APPROVED
 from .report import ERROR, Violation
 from .workspace import Workspace
 
 REQUESTED = "gate:OntologyChangeIsRequested"
 GENERATED = "gate:GeneratedMatchesSource"
+BASE = "gate:BranchBaseIsKnown"
 
 
-def branch_problems(ws: Workspace, *, drift: bool = False) -> list[Violation]:
-    """What the branch's changes break. Nothing outside a git repository."""
+def branch_problems(ws: Workspace, *, stop: bool = False) -> list[Violation]:
+    """What the branch's changes break. Nothing outside a git repository.
+
+    At Stop the generated files are compared with their sources as well, and a
+    missing base is passed over: the agent cannot fetch a branch, so blocking
+    on it would hold the session for nothing.
+    """
     changed = changed_files(ws.cfg)
     if changed is None:
         return []
     problems = ontology_change_is_requested(ws, changed)
-    if drift:
+    if stop:
         problems += generated_matches_source(ws.cfg, changed)
+    else:
+        problems += base_is_known(ws.cfg)
     return problems
+
+
+def base_is_known(cfg: Config) -> list[Violation]:
+    """A violation if the branch has commits and nothing to compare them with.
+
+    Without a base every committed change is invisible, so the gates over what
+    the branch changed would pass whatever it changed.
+    """
+    if not has_commits(cfg) or base_commit(cfg) is not None:
+        return []
+    tried = ", ".join(base_refs(cfg))
+    return [
+        Violation(
+            BASE,
+            ERROR,
+            f"none of {tried} is in this repository, so what the branch committed cannot "
+            "be compared with its base and the gates over its changes cannot fail",
+            file=CONFIG_FILE,
+            found=cfg.base_ref,
+            fix=(
+                "set base_ref under [workflow] in onto.toml to the default branch, and fetch "
+                "it: in GitHub Actions, check out with `fetch-depth: 0`"
+            ),
+        )
+    ]
 
 
 def ontology_change_is_requested(ws: Workspace, changed: set[str]) -> list[Violation]:
