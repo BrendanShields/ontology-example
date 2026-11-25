@@ -1,7 +1,7 @@
 ---
 name: term-gap
 description: Use at intake and when writing a Requirement, to find the names in a request that are not in the bounded context's glossary. Each gap becomes a question to the person or an OntologyChangeRequest, never a coined name.
-allowed-tools: Read, Grep, Bash(${CLAUDE_PROJECT_DIR}/{{onto_cmd}} *), Bash({{onto_cmd}} *)
+allowed-tools: Read, Grep, Bash({{onto_anchored}} *), Bash({{onto_cmd}} *)
 ---
 
 # Term gap
@@ -10,7 +10,7 @@ The glossary is the closed list of names this context may use. A request arrives
 
 What exists today:
 
-!`${CLAUDE_PROJECT_DIR}/{{onto_cmd}} overview`
+!`{{onto_anchored}} overview`
 
 ## Steps
 

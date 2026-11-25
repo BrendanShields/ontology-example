@@ -26,6 +26,9 @@ from .config import load_config
 
 # The placeholders of the templates. Each is replaced as exact text and nothing else is.
 ONTO_CMD = "{{onto_cmd}}"
+# Where the framework's own files spell out the project folder to reach onto. An adopting
+# repository's command has to work from any folder inside it, so it is rendered the same.
+ONTO_ANCHORED = "{{onto_anchored}}"
 BASE_URI = "{{base_uri}}"
 
 # Template folders have plain names, so that no packaging tool drops them.
@@ -83,6 +86,7 @@ class Options:
         return {
             "{{onto_cmd_quoted}}": json.dumps(self.onto_cmd),
             ONTO_CMD: self.onto_cmd,
+            ONTO_ANCHORED: self.onto_cmd,
             BASE_URI: self.base_uri,
             "{{context}}": self.context,
             "{{prefix}}": re.sub(r"[^a-z0-9]", "", self.context),

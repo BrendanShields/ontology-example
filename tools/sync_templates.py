@@ -53,9 +53,12 @@ VERBATIM = (
 )
 SETTINGS = ".claude/settings.json"
 ONTO_HERE = "bin/onto"  # how this repository runs onto
+ANCHORED_HERE = "${CLAUDE_PROJECT_DIR}/" + ONTO_HERE  # the same, from any working directory
 # A hook cannot rely on its working directory, so it names the project folder.
 HOOK_HERE = f'"$CLAUDE_PROJECT_DIR"/{ONTO_HERE}'
 HOOK_THERE = f'cd "$CLAUDE_PROJECT_DIR" && {scaffold.ONTO_CMD}'
+# What this repository writes -> the placeholder it becomes. The longer spelling goes first.
+PLACEHOLDERS = {ANCHORED_HERE: scaffold.ONTO_ANCHORED, ONTO_HERE: scaffold.ONTO_CMD}
 
 
 def base_uri() -> str:
@@ -126,7 +129,7 @@ def build() -> tuple[dict[str, bytes], list[str]]:
             text = data.decode()
             problems += [
                 f"{rel}: contains the placeholder {token}"
-                for token in (scaffold.ONTO_CMD, scaffold.BASE_URI)
+                for token in PLACEHOLDERS.values()
                 if token in text
             ]
             problems += [
@@ -135,7 +138,8 @@ def build() -> tuple[dict[str, bytes], list[str]]:
                 for word in local
                 if word in text
             ]
-            text = text.replace(base, scaffold.BASE_URI).replace(ONTO_HERE, scaffold.ONTO_CMD)
+            for here, placeholder in {base: scaffold.BASE_URI, **PLACEHOLDERS}.items():
+                text = text.replace(here, placeholder)
             data = text.encode()
         tree[template_path(rel)] = data
 
@@ -151,7 +155,8 @@ def build() -> tuple[dict[str, bytes], list[str]]:
 
 def restore(tree: dict[str, bytes]) -> dict[str, bytes]:
     """The templates rendered with this repository's own values, as `onto init` renders them."""
-    values = {scaffold.ONTO_CMD: ONTO_HERE, scaffold.BASE_URI: base_uri()}
+    values = {placeholder: here for here, placeholder in PLACEHOLDERS.items()}
+    values[scaffold.BASE_URI] = base_uri()
     return {rel: scaffold.render(data, values) for rel, data in tree.items()}
 
 

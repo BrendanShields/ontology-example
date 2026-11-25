@@ -132,9 +132,11 @@ def test_what_init_writes_speaks_of_the_adopting_repository_only(scaffolded):
         assert not re.search(r"\{\{[a-z_]+\}\}", text), f"{rel} has a placeholder left in it"
         assert "bank.example" not in text, f"{rel} names the namespace of the onto repository"
         assert "bin/onto" not in text, f"{rel} runs onto through a wrapper that is not here"
+        assert "${CLAUDE_PROJECT_DIR}" not in text, f"{rel} looks for onto in the project folder"
     assert f"wf: {BASE_URI}/ontology/workflow/" in files["ontology/workflow.yaml"].decode()
     assert ONTO_CMD in files[".github/workflows/ontology-gates.yml"].decode()
     assert f"`{ONTO_CMD} resolve <name>`" in files[".claude/skills/ostack-mode/SKILL.md"].decode()
+    assert f"\n!`{ONTO_CMD} overview`\n" in files[".claude/skills/term-gap/SKILL.md"].decode()
 
 
 def test_the_skills_adapted_from_pstack_arrive_with_their_licence_and_attribution(scaffolded):

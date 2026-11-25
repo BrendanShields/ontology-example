@@ -6,7 +6,7 @@
 
 1. [intake] Find the OntologyChangeRequest under `work/`, or raise one: `{{onto_cmd}} ocr new --context <context> --term <Term> --justification "..."`. Say which Requirement needs the term.
 2. [vocabulary] Check it is really new: `{{onto_cmd}} resolve <Term>`, then the same for each synonym you can think of. An alias or a denied synonym of an existing term is a finding, not a new term.
-3. [design] Draft the definition in one or two sentences a quality analyst would agree with. State what the term is not. List the names that should be denied in its favour. Put the open questions in the request's body.
+3. [design] Draft the definition in one or two sentences a person who works in the domain would agree with. State what the term is not. List the names that should be denied in its favour. Put the open questions in the request's body.
 4. [design] Stop. Ask the person who owns the bounded context to decide. They move the request to `in_progress` when they approve. Do not change its status yourself.
 5. [implement] With the request `in_progress`, edit `ontology/domains/<context>.yaml`. The guard asks the person to confirm each edit. Change only what the request covers.
 6. [implement] `{{onto_cmd}} gen`, then fix what the new types break. Never edit a generated file.

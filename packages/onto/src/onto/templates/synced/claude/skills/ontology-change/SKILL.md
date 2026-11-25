@@ -1,14 +1,14 @@
 ---
 name: ontology-change
 description: Use to add, rename, redefine or retire a glossary term, or when a gate says to raise an OntologyChangeRequest. The only route by which ontology/ changes, and a person approves it.
-allowed-tools: Read, Grep, Bash(${CLAUDE_PROJECT_DIR}/{{onto_cmd}} *), Bash({{onto_cmd}} *)
+allowed-tools: Read, Grep, Bash({{onto_anchored}} *), Bash({{onto_cmd}} *)
 ---
 
 # Ontology change
 
 The glossaries and the requests open now:
 
-!`${CLAUDE_PROJECT_DIR}/{{onto_cmd}} overview`
+!`{{onto_anchored}} overview`
 
 Follow the **Ontology change** playbook of **ostack-mode**: open `.claude/skills/ostack-mode/playbooks/ontology-change.md`, copy its steps into the task list word for word, and work through them. A step you do not do stays listed with `skip: <reason>`.
 
