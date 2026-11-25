@@ -102,7 +102,11 @@ def class_diagram(glossary: Glossary) -> str:
         relations.extend(f"    {mixin} <|.. {name}" for mixin in sorted(cls.mixins or ()))
 
     for name in sorted(enums):
-        values = [f"        {value}" for value in enums[name].permissible_values]
+        # A brace or a line break in a value would end the class block early.
+        values = [
+            "        " + _clean(value).translate(_NO_BRACES)
+            for value in enums[name].permissible_values
+        ]
         blocks.append(_block(name, ["        <<enumeration>>", *values]))
 
     return "\n".join(["classDiagram", *blocks, *sorted(relations)])
@@ -149,6 +153,9 @@ def _table(header: tuple[str, ...], rows: list[tuple[str, ...]]) -> str:
         *("| " + " | ".join(_cell(value) for value in row) + " |" for row in rows),
     ]
     return "\n".join(lines)
+
+
+_NO_BRACES = str.maketrans("{}", "()")
 
 
 def _clean(text: str | None) -> str:

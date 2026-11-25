@@ -117,6 +117,22 @@ def test_the_mermaid_check_rejects_a_broken_diagram(broken, problem):
     assert any(problem in found for found in mermaid_problems(broken))
 
 
+def test_an_enum_value_with_a_brace_cannot_close_its_class_block(repo):
+    source = repo.root / "ontology/domains/call-qa.yaml"
+    source.write_text(
+        source.read_text().replace(
+            "      REPRESENTATIVE:\n", '      "odd}value{":\n      REPRESENTATIVE:\n', 1
+        )
+    )
+    assert main(["gen"]) == 0
+
+    diagram = diagram_of((repo.root / CALL_QA).read_text())
+    assert "odd)value(" in diagram
+    assert [line.strip() for line in diagram.splitlines() if "}" in line] == ["}"] * diagram.count(
+        " {"
+    )
+
+
 def test_a_page_depends_on_the_ontology_alone(repo, capsys):
     before = (repo.root / CALL_QA).read_text()
     repo.item("REQ-0001", title="Something new on the branch")
