@@ -612,6 +612,12 @@ def _gen(args) -> int:
     return 0
 
 
+def _verify(args) -> int:
+    from . import verify
+
+    return verify.run(args.scope, Path(args.out) if args.out else None)
+
+
 # --- argument parsing ------------------------------------------------------------
 
 
@@ -738,6 +744,10 @@ def _parser() -> argparse.ArgumentParser:
 
     p = command("gen", _gen, "compile the LinkML sources into JSON Schema, SHACL and Pydantic")
     p.add_argument("--check", action="store_true", help="fail if a generated file is out of date")
+
+    p = command("verify", _verify, "run every gate and write one index of what they showed")
+    p.add_argument("--scope", choices=("all", "branch"), default="all")
+    p.add_argument("--out", metavar="DIR", help="where the index and the bundles go")
     return parser
 
 

@@ -1,0 +1,291 @@
+"""`onto verify`: run every gate and leave one index of what they showed.
+
+The index (verify.json, next to the provenance bundles) is what a reviewer or
+an auditor opens first: which commit, which ontology, which gates held, which
+requirement is verified by which evidence. It is written whether or not the
+gates hold, so a failure can be inspected.
+
+Two rules shape it:
+
+* It is built from typed fields: ids, counts, statuses, rule names, paths and
+  hashes. Never from what a gate printed, a violation's message or an
+  exception's text, because any of those can quote an Utterance or a Finding.
+* Everything that differs between two runs on the same tree (the commit, the
+  times) sits under `varies_per_run`. The rest is the same on every rerun.
+"""
+
+from __future__ import annotations
+
+import argparse
+import contextlib
+import hashlib
+import io
+import json
+import subprocess
+import time
+from collections import Counter
+from datetime import UTC, datetime
+from pathlib import Path
+
+from .config import Config
+from .workspace import Workspace
+
+INDEX = "verify.json"
+PASSED, FAILED, ERRORED, SKIPPED = "passed", "failed", "error", "skipped"
+VIOLATION_FIELDS = ("rule", "severity", "subject", "file", "line")
+REQUIREMENT_FIELDS = ("id", "status", "risk_tier", "tasks", "tests", "verdict")
+
+
+def run(scope: str, out_dir: Path | None = None) -> int:
+    """Run the gates in order, write the index, say where it is. 1 if a gate did not hold."""
+    cfg = Workspace.at().cfg
+    out_dir = (out_dir or cfg.prov_dir).resolve()
+    index: dict = {
+        "schema_version": 1,
+        "ok": False,
+        "scope": scope,
+        "base_ref": cfg.base_ref,
+        "ontology_sources": _sources(cfg),
+        "generated_files": [],
+        "gates": [],
+        "trace": None,
+        "evidence": [],
+        "provenance_bundles": [],
+        "varies_per_run": {"commit": _git(cfg, "rev-parse", "HEAD"), "started_at": _now()},
+    }
+    try:
+        _run_gates(cfg, scope, out_dir, index)
+    finally:
+        index["ok"] = all(gate["status"] in (PASSED, SKIPPED) for gate in index["gates"])
+        index["varies_per_run"]["finished_at"] = _now()
+        out_dir.mkdir(parents=True, exist_ok=True)
+        target = out_dir / INDEX
+        target.write_text(json.dumps(index, indent=2) + "\n", encoding="utf-8")
+
+    for gate in index["gates"]:
+        counts = ", ".join(f"{value} {key}" for key, value in gate["counts"].items())
+        print(
+            f"{gate['status']:8} {gate['command']:36} {counts or gate.get('reason', '')}".rstrip()
+        )
+    held = (
+        "every gate holds" if index["ok"] else "a gate does not hold: rerun its command to see why"
+    )
+    print(f"onto verify: {held}. Index: {cfg.rel(target)}")
+    return 0 if index["ok"] else 1
+
+
+def _run_gates(cfg: Config, scope: str, out_dir: Path, index: dict) -> None:
+    varies = index["varies_per_run"]
+    varies["base_commit"] = _git(cfg, "merge-base", "HEAD", cfg.base_ref)
+    varies["uncommitted_files"] = len((_git(cfg, "status", "--porcelain") or "").splitlines())
+    seconds: dict[str, float] = varies.setdefault("seconds", {})
+    commands = _commands()
+
+    def gate(name: str, measure, *options: str) -> None:
+        """Record one gate. `measure` returns (exit status, counts) and may raise."""
+        entry = {"name": name, "command": " ".join(("onto", name, *options))}
+        started = time.perf_counter()
+        try:
+            code, counts = measure()
+            entry |= {"exit_status": code, "status": PASSED if code == 0 else FAILED}
+        except (Exception, SystemExit) as exc:
+            # The class says what kind of failure it was. The text could quote anything.
+            counts = {}
+            entry |= {"exit_status": None, "status": ERRORED, "reason": type(exc).__name__}
+        entry["counts"] = counts
+        seconds[name] = round(time.perf_counter() - started, 2)
+        index["gates"].append(entry)
+
+    def gen_check() -> tuple[int, dict]:
+        from . import gen
+
+        results = gen.generate(cfg, check=True)
+        sources = cfg.generated_files()
+        index["generated_files"] = [
+            {
+                "path": r.path,
+                "source": sources.get(r.path),
+                "sha256": _sha256(cfg.root / r.path),
+                "status": r.status,
+            }
+            for r in sorted(results, key=lambda r: r.path)
+        ]
+        drift = sum(1 for r in results if r.status == "drift")
+        return (1 if drift else 0), {"files": len(results), "drift": drift}
+
+    def violations_of(argv: list[str]):
+        def measure() -> tuple[int, dict]:
+            code, printed = _onto(argv)
+            return code, _violation_counts(_json(printed))
+
+        return measure
+
+    def collect() -> tuple[int, dict]:
+        code, _ = _onto(["evidence", "collect", "--scope", scope])
+        ws = Workspace.at(cfg.root)
+        in_scope = _scope(ws, scope)
+        found = [e for e in ws.of_class("Evidence") if in_scope is None or e.id in in_scope]
+        index["evidence"] = [
+            {"id": e.id, "of_test": _id(ws, e.meta.get("of_test")), "result": _result(e)}
+            for e in sorted(found, key=lambda e: e.id)
+        ]
+        varies["evidence"] = {
+            e.id: {key: str(e.meta[key]) for key in ("recorded_at", "commit_sha") if key in e.meta}
+            for e in sorted(found, key=lambda e: e.id)
+        }
+        results = Counter(entry["result"] for entry in index["evidence"])
+        return code, {"evidence": len(found), "pass": results["pass"], "fail": results["fail"]}
+
+    def trace() -> tuple[int, dict]:
+        code, printed = _onto(["trace", "--scope", scope, "--format", "json"])
+        parsed = _json(printed)
+        if not isinstance(parsed, dict):  # nothing in scope on this branch
+            return code, {}
+        ws = Workspace.at(cfg.root)
+        index["trace"] = {
+            "coverage": {k: v for k, v in parsed.get("coverage", {}).items() if isinstance(v, int)},
+            "requirements": [
+                {key: row[key] for key in REQUIREMENT_FIELDS if key in row}
+                for row in parsed.get("requirements", [])
+            ],
+            "violations": [_violation(ws, v) for v in parsed.get("violations", [])],
+        }
+        return code, index["trace"]["coverage"] | _violation_counts(parsed.get("violations"))
+
+    def emit() -> tuple[int, dict]:
+        # `prov emit` prints the path of each bundle it wrote, one per line.
+        code, printed = _onto(["prov", "emit", "--scope", scope, "--out", str(out_dir)])
+        bundles = sorted(
+            line
+            for line in printed.splitlines()
+            if line.endswith(".ttl") and (cfg.root / line).is_file()
+        )
+        index["provenance_bundles"] = bundles
+        return code, {"bundles": len(bundles)}
+
+    gate("gen --check", gen_check)
+    for name in ("validate", "check-terms"):
+        gate(name, violations_of([name, "--format", "json"]))
+    gate("evidence collect", collect, "--scope", scope)
+    gate("trace", trace, "--scope", scope)
+    # `rules` belongs to another module of the tooling and may not be installed.
+    if "rules" in commands:
+        gate("rules", violations_of(["rules", *_supported(commands["rules"], scope)]))
+    else:
+        index["gates"].append(
+            {
+                "name": "rules",
+                "command": "onto rules",
+                "exit_status": None,
+                "status": SKIPPED,
+                "reason": "this onto has no `rules` command",
+                "counts": {},
+            }
+        )
+    gate("prov emit", emit, "--scope", scope)
+
+
+# --- running a command of this CLI -----------------------------------------------
+
+
+def _onto(argv: list[str]) -> tuple[int, str]:
+    """Run an onto command in this process, as the CLI would. Its output is held back."""
+    from . import cli
+
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
+        code = cli.main(argv)
+    return code, out.getvalue()
+
+
+def _json(printed: str):
+    try:
+        return json.loads(printed)
+    except ValueError:
+        return None
+
+
+def _commands() -> dict[str, argparse.ArgumentParser]:
+    from . import cli
+
+    for action in cli._parser()._actions:
+        if isinstance(action, argparse._SubParsersAction):
+            return dict(action.choices)
+    return {}
+
+
+def _supported(command: argparse.ArgumentParser, scope: str) -> list[str]:
+    """The options of ours that a command we do not own understands."""
+    options = command._option_string_actions
+    argv: list[str] = []
+    if "--scope" in options and scope in (options["--scope"].choices or ()):
+        argv += ["--scope", scope]
+    if "--format" in options and "json" in (options["--format"].choices or ()):
+        argv += ["--format", "json"]
+    return argv
+
+
+# --- typed fields only -----------------------------------------------------------
+
+
+def _violation_counts(parsed) -> dict:
+    """Errors and warnings of a gate's JSON report, and how many of each rule."""
+    if isinstance(parsed, dict):
+        parsed = parsed.get("violations")
+    if not isinstance(parsed, list):
+        return {}
+    found = [v for v in parsed if isinstance(v, dict)]
+    counts: dict = {
+        "errors": sum(1 for v in found if v.get("severity") == "error"),
+        "warnings": sum(1 for v in found if v.get("severity") == "warning"),
+    }
+    by_rule = Counter(str(v.get("rule")) for v in found)
+    if by_rule:
+        counts["by_rule"] = dict(sorted(by_rule.items()))
+    return counts
+
+
+def _violation(ws: Workspace, violation: dict) -> dict:
+    kept = {key: violation[key] for key in VIOLATION_FIELDS if key in violation}
+    if "subject" in kept:
+        kept["subject"] = _id(ws, kept["subject"])
+    return kept
+
+
+def _id(ws: Workspace, value) -> str | None:
+    """The value if it is the id of a work item, else nothing: an id field is not free text."""
+    return value if isinstance(value, str) and value in ws.by_id else None
+
+
+def _result(evidence) -> str | None:
+    result = evidence.meta.get("result")
+    return result if result in ("pass", "fail") else None
+
+
+def _scope(ws: Workspace, scope: str) -> set[str] | None:
+    from .gates import branch_scope
+
+    return None if scope == "all" else branch_scope(ws)
+
+
+# --- files and git -----------------------------------------------------------------
+
+
+def _sources(cfg: Config) -> list[dict]:
+    paths = {cfg.workflow_schema, *cfg.gate_shapes, *(ctx.schema for ctx in cfg.contexts.values())}
+    return [{"path": cfg.rel(p), "sha256": _sha256(p)} for p in sorted(paths, key=cfg.rel)]
+
+
+def _sha256(path: Path) -> str | None:
+    return hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else None
+
+
+def _git(cfg: Config, *args: str) -> str | None:
+    done = subprocess.run(
+        ["git", "-C", str(cfg.root), *args], capture_output=True, text=True, check=False
+    )
+    return done.stdout.strip() if done.returncode == 0 else None
+
+
+def _now() -> str:
+    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
