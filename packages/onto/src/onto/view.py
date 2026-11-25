@@ -70,7 +70,7 @@ def build(ws: Workspace) -> dict:
                     "risk_tier": row.risk,
                     "context": row.context,
                     "tasks": sorted(row.tasks),
-                    "tests": row.tests,
+                    "tests": dict(sorted(row.tests.items())),
                     "verdict": row.verdict,
                     "replaces": _one(ws, row.requirement, "replaces"),
                     "replaced_by": row.replaced_by,

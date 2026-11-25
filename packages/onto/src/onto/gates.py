@@ -199,6 +199,37 @@ def traceability(graph: WorkGraph) -> list[TraceRow]:
     return sorted(rows.values(), key=lambda r: r.requirement)
 
 
+VERIFIED = "gate:CompleteRequirementIsVerified"
+
+
+def unverified(ws: Workspace, rows: list[TraceRow], problems: list[Violation]) -> list[Violation]:
+    """One violation per done Requirement the matrix does not call verified and no gate reported.
+
+    The graph gate asks whether each Test has some passing Evidence. The matrix
+    asks whether any Evidence fails. They are two readings of the same files,
+    so a row printed as failing must never go with an exit code of 0.
+    """
+    reported = {p.subject for p in problems if p.rule == VERIFIED}
+    found = []
+    for row in rows:
+        if row.status != "done" or row.verdict == "verified" or row.requirement in reported:
+            continue
+        item = ws.by_id.get(row.requirement)
+        tests = ", ".join(f"{t} ({r or 'no evidence'})" for t, r in sorted(row.tests.items()))
+        found.append(
+            Violation(
+                VERIFIED,
+                ERROR,
+                f"Requirement is done but its verdict is {row.verdict}: {tests or 'no Test'}.",
+                file=item.rel if item else None,
+                line=item.line_of("status") if item else None,
+                subject=row.requirement,
+                fix="make the tests pass and record what they show, or set it to in_progress",
+            )
+        )
+    return found
+
+
 def coverage(rows: list[TraceRow]) -> dict[str, int]:
     agreed = [r for r in rows if r.status in AGREED]
     return {

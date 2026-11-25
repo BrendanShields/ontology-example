@@ -1,7 +1,8 @@
 """Guard the files nobody should edit casually.
 
 * Generated artefacts are never edited: their source is.
-* Evidence is never written by hand: a test run produces it.
+* Evidence is never written by hand: a test run produces it. That holds for the
+  evidence folder and for any work item file named or identified as Evidence.
 * The files that configure the gates are put to a person before they change.
 * A request is approved by a person: so is the edit that marks it approved.
 * The ontology sources change only while an OntologyChangeRequest is in
@@ -60,7 +61,15 @@ def decide(ws: Workspace, path: str, tool_input: dict | None = None) -> tuple[st
             "Confirm that this change to the gates themselves is intended."
         )
 
-    if key.startswith(paths.fold(cfg, cfg.rel(cfg.work_dir)) + "/") and tool_input:
+    in_work = key.startswith(paths.fold(cfg, cfg.rel(cfg.work_dir)) + "/")
+    if in_work and _is_evidence(ws, path, tool_input):
+        return DENY, (
+            f"{rel} would be Evidence, which only a test run may write, and only under "
+            f"{cfg.rel(cfg.evidence_dir)}/: run `onto evidence collect` or "
+            "`pytest --onto-evidence`."
+        )
+
+    if in_work and tool_input:
         if not hooks.readable(tool_input):
             return ASK, (
                 f"The guard cannot read this edit to {rel}, so it cannot tell whether the edit "
@@ -92,6 +101,21 @@ def decide(ws: Workspace, path: str, tool_input: dict | None = None) -> tuple[st
     return ASK, (
         f"Ontology edit to {rel} under {requests}. Confirm that this edit is what the "
         "request asks for."
+    )
+
+
+def _is_evidence(ws: Workspace, path: str, tool_input: dict | None) -> bool:
+    """Whether the file is named as Evidence is, or the edit leaves it with the id of one."""
+    target = ws.cfg.root / path
+    names = [target.name.split(".", 1)[0]]
+    if tool_input and hooks.readable(tool_input):
+        try:
+            current = target.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            current = None
+        names.append(_frontmatter(hooks.text_after(tool_input, current)).get("id"))
+    return any(
+        isinstance(name, str) and ws.schema.class_for_id(name) == "Evidence" for name in names
     )
 
 

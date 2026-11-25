@@ -284,15 +284,28 @@ def _check_terms_hook(ws, event: dict) -> int:
 def _guard(args) -> int:
     """PreToolUse: decide whether an Edit or Write may touch its target."""
     from . import guard, hooks
+    from .config import find_root
+    from .workspace import Workspace
 
-    ws = _workspace()
+    root = find_root()  # no ontology layer here: nothing to guard, and main() says so
     if args.deny_rules or args.check_settings:
-        return _deny_rules(ws.cfg, check=args.check_settings)
+        return _deny_rules(_workspace().cfg, check=args.check_settings)
     event = {} if args.path else hooks.read_event()
     file = args.path or hooks.edited_file(event)
     if not file:
         return 0
-    decision, reason = guard.decide(ws, file, event.get("tool_input"))
+    try:
+        decision, reason = guard.decide(Workspace.at(root), file, event.get("tool_input"))
+    except Exception as exc:
+        if args.path:
+            raise
+        # A guard that cannot decide must not wave the edit through: an exit code of 1 is
+        # a non-blocking error to Claude Code. It does not block either. A person decides.
+        decision = guard.ASK
+        reason = (
+            f"The guard could not decide on this edit ({type(exc).__name__}: {describe(exc)}). "
+            "Confirm that the file is not one it protects, and run `onto validate`."
+        )
     if args.path:  # asked by hand: just say what would happen
         print(f"{decision}: {reason}" if reason else decision)
         return 0
@@ -458,6 +471,8 @@ def _trace(args) -> int:
             branch_problems.append(unreadable)
         problems, rows = list(branch_problems), []
 
+    problems += gates.unverified(ws, rows, problems)
+
     if args.format == "json":
         import json
 
@@ -471,7 +486,7 @@ def _trace(args) -> int:
                             "status": r.status,
                             "risk_tier": r.risk,
                             "tasks": sorted(r.tasks),
-                            "tests": r.tests,
+                            "tests": dict(sorted(r.tests.items())),
                             "verdict": r.verdict,
                             "replaced_by": r.replaced_by,
                         }

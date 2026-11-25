@@ -13,12 +13,13 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from importlib import metadata
+from importlib import metadata, util
 
 from . import frontmatter
 from .workspace import WorkItem, Workspace
 
 PASSED = "passed"
+RECORDED = "onto: recorded evidence for "  # what the pytest plugin says once it has
 
 
 @dataclass
@@ -82,11 +83,35 @@ def tests_for(ws: Workspace, scope: set[str] | None) -> list[WorkItem]:
     return [t for t in tests if t.id in scope or set(t.values("verifies")) & scope]
 
 
+def prune(ws: Workspace) -> list[str]:
+    """Delete the Evidence of Tests that are no longer there. Returns the ids deleted.
+
+    Evidence is ignored by git, so it stays behind when a branch is left for one
+    without the Test, and every gate then fails on a link that points nowhere.
+    """
+    gone = [e for e in ws.of_class("Evidence") if not set(e.values("of_test")) & set(ws.by_id)]
+    for item in gone:
+        item.path.unlink(missing_ok=True)
+    if gone:
+        ws.reload()
+    return [item.id for item in gone]
+
+
 def collect(ws: Workspace, tests: list[WorkItem]) -> Collection:
     """Run the pytest nodes of the given Tests and record their evidence."""
+    prune(ws)
     paths = sorted({str(t.meta["path"]) for t in tests if t.meta.get("path")})
     if not paths:
         return Collection(0, "no tests to run", ok=True)
+    if not _pytest_installed():
+        # `python -m pytest` would exit 1, which is also what a failing test gives: the
+        # evidence of an earlier run would then be read as the evidence of this one.
+        return Collection(
+            1,
+            f"pytest is not installed in the interpreter onto runs in ({sys.executable}), so "
+            "no test ran and no evidence was recorded: install pytest beside onto",
+            ok=False,
+        )
     command = [
         sys.executable,
         "-m",
@@ -102,11 +127,18 @@ def collect(ws: Workspace, tests: list[WorkItem]) -> Collection:
     done = subprocess.run(
         [*command, *paths], cwd=ws.cfg.root, capture_output=True, text=True, check=False
     )
+    if done.returncode == 1 and RECORDED not in done.stdout:
+        # 1 with no word from the recorder: pytest stopped before it ran anything.
+        return Collection(1, (done.stdout + done.stderr).strip(), ok=False)
     ws.reload()
     # 0: all passed, 1: some failed. Anything else means pytest could not run them.
     return Collection(
         done.returncode, (done.stdout + done.stderr).strip(), done.returncode in (0, 1)
     )
+
+
+def _pytest_installed() -> bool:
+    return util.find_spec("pytest") is not None
 
 
 def _plugin_installed() -> bool:

@@ -161,6 +161,9 @@ def scratch_repo(
                 (root / rel).parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy(source / rel, root / rel)
     (root / "work").mkdir(exist_ok=True)
+    # As in any repository with the layer: Evidence is derived, and one that is committed
+    # is refused as written by hand.
+    scratch.write(".gitignore", "work/evidence/\n")
     scratch.write(TEST_PATH.split("::")[0], "def test_example():\n    assert True\n")
     if not bind_rules:
         _withdraw_bindings(root)

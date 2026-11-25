@@ -6,7 +6,7 @@ nothing unless the option is given.
 
 from __future__ import annotations
 
-from .evidence import PASSED
+from .evidence import PASSED, RECORDED
 
 
 def pytest_addoption(parser) -> None:
@@ -60,5 +60,5 @@ class _Recorder:
             terminalreporter.write_line(f"onto: could not record evidence ({self.error})", red=True)
         else:
             terminalreporter.write_line(
-                f"onto: recorded evidence for {len(self.written)} test item(s) in work/evidence/"
+                f"{RECORDED}{len(self.written)} test item(s) in work/evidence/"
             )
