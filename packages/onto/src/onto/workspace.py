@@ -62,7 +62,8 @@ def _tracked(cfg: Config) -> set[str]:
     if not cfg.evidence_dir.is_dir():
         return set()
     done = subprocess.run(
-        ["git", "-C", str(cfg.root), "ls-files", "--full-name", "--", str(cfg.evidence_dir)],
+        # Relative to the root, as cfg.rel is: the root may lie below the top of the checkout.
+        ["git", "-C", str(cfg.root), "ls-files", "--", str(cfg.evidence_dir)],
         capture_output=True,
         text=True,
         check=False,

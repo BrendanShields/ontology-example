@@ -79,6 +79,24 @@ def test_evidence_that_was_committed_is_refused(repo, capsys):
     assert trace(capsys)[0] == 1
 
 
+def test_committed_evidence_is_refused_where_the_layer_lies_below_the_checkout(
+    tmp_path, monkeypatch
+):
+    outer = tmp_path / "checkout"
+    (outer / "services").mkdir(parents=True)
+    scratch = scratch_repo(outer / "services", term="Finding")
+    monkeypatch.setenv("ONTO_ROOT", str(scratch.root))
+    scratch.item("REQ-0001", status="done")
+    scratch.item("TST-0001")
+    scratch.item("EVD-0001", result="pass")
+    subprocess.run(["git", "-C", str(outer), "init", "-q", "-b", "main"], check=True)
+    assert refused(scratch) == []
+
+    subprocess.run(["git", "-C", str(outer), "add", "-f", "."], check=True)
+
+    assert refused(scratch) == ["work/evidence/EVD-0001.md"]
+
+
 def test_another_file_in_the_evidence_folder_is_refused(repo):
     repo.write("work/evidence/REQ-0002.md", frontmatter.render({"id": "REQ-0002"}, ""))
 
@@ -159,7 +177,8 @@ def test_a_pytest_that_stopped_before_the_recorder_spoke_is_not_a_run(repo, monk
 
 def test_collecting_drops_the_evidence_of_a_test_that_is_gone(repo, capsys):
     repo.item("EVD-0002", of_test="TST-0002")  # left behind by another branch
-    assert [p.rule for p in validate(repo.ws())] == ["dangling-reference"]
+    (stale,) = validate(repo.ws())
+    assert stale.rule == "dangling-reference" and "onto evidence collect" in stale.fix
 
     assert evidence.prune(repo.ws()) == ["EVD-0002"]
 

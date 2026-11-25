@@ -21,6 +21,10 @@ from .workspace import WorkItem, Workspace
 
 # Classes whose prose is scanned for denied synonyms. Decisions and change
 # requests are left out on purpose: they have to be able to name a retired term.
+STALE_EVIDENCE = (
+    "if its Test is on another branch, run `onto evidence collect`: it deletes Evidence "
+    "of a Test that is no longer there"
+)
 PROSE_CHECKED = {"Requirement": ("title", "ears_text"), "Task": ("title",), "Test": ("title",)}
 
 
@@ -104,6 +108,8 @@ def validate_item(ws: Workspace, item: WorkItem) -> list[Violation]:
                         f"{slot.name} points at {value}, which does not exist under work/",
                         slot.name,
                         found=value,
+                        # Evidence is ignored by git, so it outlives the branch its Test is on.
+                        **({"fix": STALE_EVIDENCE} if item.cls == "Evidence" else {}),
                     )
                 elif target.cls != slot.range:
                     problem(

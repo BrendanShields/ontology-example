@@ -502,9 +502,10 @@ outside one. CI and the CODEOWNERS review are the controls.
   Name owners for `onto.toml`, `.claude/settings.json` and `.github/` in
   CODEOWNERS, and read a change to them as a change to the gates.
 - **Evidence stays behind when you switch branches.** It is ignored by git, so
-  after a checkout `onto validate` can report `dangling-reference` on Evidence
-  of a Test the branch does not have. `onto evidence collect` (and so
-  `onto trace --collect`) deletes such Evidence before it runs.
+  after a checkout `onto validate`, `onto trace` and `make onto-check` can fail
+  with `dangling-reference` on Evidence of a Test the branch does not have.
+  Run `uv run onto evidence collect` once: it deletes such Evidence before it
+  runs the tests. The error's `fix:` line says the same.
 - **Messages name the command as `onto`.** A `fix:` line prints `onto ...`
   whatever `--onto-cmd` is. With the default, run it as `uv run onto ...`.
 - **A scratch copy has no proof of your rules.** Once your glossary binds a
