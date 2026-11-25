@@ -3,7 +3,7 @@ import { kit } from "../kit.mjs";
 export default {
   id: "s05",
   holds: 4,
-  eyebrow: "05 / EVIDENCE",
+  eyebrow: "04 / EVIDENCE",
   title: ["Where prompt dumps and vector search stop working"],
   body() {
     const k = kit();
@@ -50,7 +50,7 @@ export default {
     k.rect(X, 682, 475, 36, { b: 3, at: 1.2, dur: 0.6, x: 4 });
     k.mk(X + 475, 700, { b: 3, at: 0.4, dur: 1.2 });
     k.text(X + 501, 712, "98–100%", { b: 3, at: 1.6, c: "t1", x: 4 });
-    k.cap("QUESTIONS ABOUT STRUCTURE NEED STRUCTURE", 3, { at: 1.7 });
+    k.cap("A TYPED GRAPH ANSWERS WHAT REPLACED WHAT", 3, { at: 1.7 });
     k.src("MOOSEDEV, ARXIV:2608.13662", { b: 3, at: 1.8, x: 4 });
 
     // 4. The honest boundary.

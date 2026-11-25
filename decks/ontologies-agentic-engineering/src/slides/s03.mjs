@@ -12,7 +12,7 @@ const hex = (cx, cy, R) =>
 export default {
   id: "s03",
   holds: 5,
-  eyebrow: "03 / INTERNAL FRICTION",
+  eyebrow: "02 / INTERNAL FRICTION",
   title: ["Netflix's four-hour home screen regression"],
   body() {
     const k = kit();

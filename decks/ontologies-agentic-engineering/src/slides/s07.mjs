@@ -3,7 +3,7 @@ import { kit } from "../kit.mjs";
 export default {
   id: "s07",
   holds: 4,
-  eyebrow: "07 / VOCABULARY",
+  eyebrow: "06 / VOCABULARY",
   title: ["Four terms people conflate"],
   body() {
     const k = kit();

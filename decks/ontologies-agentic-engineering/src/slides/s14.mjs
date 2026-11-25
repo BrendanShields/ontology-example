@@ -2,18 +2,18 @@ import { kit } from "../kit.mjs";
 
 // name, caption, code lines, and whether a guard blocks the first line
 const stages = [
-  ["GROUND", "LOAD THE DECISION THAT IS IN FORCE", ["get_active_decisions()", "ADR_004 · ADR_001 is superseded"]],
-  ["SPEC", "EDIT THE SCHEMA, NOT GENERATED CODE", ["billing.py · PreToolUse DENY", "billing.yaml → SDK · shapes · docs"], true],
+  ["GROUND", "ROUTE THE SLICE · LOAD ACTIVE DECISIONS", ["router → billing · get_active_decisions()", "ADR_004 · ADR_001 is superseded"]],
+  ["SPEC", "EDIT THE SCHEMA, NOT GENERATED CODE", ["billing.py · PreToolUse DENY", "billing.yaml (LinkML) → SDK · shapes · docs"], true],
   ["CODE", "A STRAY COMMENT FAILS THE CHECK", ["inline comment · no-comments exit 2", "refunds.py, comment removed"], true],
   ["VERIFY", "FUZZ THE BOUNDARY, NOT ONE EXAMPLE", ["Hypothesis × 1,000 (PlanTier, amount)", "$1,000.00 passes · $1,000.01 fails"]],
-  ["STAGE ADR", "THE DECISION IS STAGED, NOT MERGED", ["Stop hook → propose_decision", "ADR_005 supersedes ADR_004"]],
+  ["STAGE ADR", "THE DECISION IS STAGED, NOT MERGED", ["Stop hook → propose_decision", "ADR_005 supersedes ADR_004"], true],
   ["REVIEW", "A PERSON REVIEWS EVIDENCE, NOT 400 LINES", []],
 ];
 
 export default {
   id: "s14",
   holds: 6,
-  eyebrow: "14 / WALKTHROUGH",
+  eyebrow: "15 / WALKTHROUGH",
   title: ["One change, end to end"],
   body() {
     const k = kit();
@@ -40,6 +40,8 @@ export default {
       moods: [
         { face: "blocked", b: 2, at: 0.6 },
         { face: "happy", b: 4, at: 0.6 },
+        { face: "blocked", b: 5, at: 0.35 },
+        { face: "happy", b: 6, at: 0.4 },
       ],
     });
 

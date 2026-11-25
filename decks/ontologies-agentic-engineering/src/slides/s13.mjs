@@ -3,7 +3,7 @@ import { kit } from "../kit.mjs";
 export default {
   id: "s13",
   holds: 4,
-  eyebrow: "13 / PROGRESSIVE CONTEXT",
+  eyebrow: "14 / PROGRESSIVE CONTEXT",
   title: ["Progressive disclosure and", "the silent SPARQL failure"],
   body() {
     const k = kit();

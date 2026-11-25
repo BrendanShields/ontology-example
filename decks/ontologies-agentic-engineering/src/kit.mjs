@@ -23,6 +23,12 @@ export function seeded(seed) {
 }
 
 let faceCount = 0;
+let personCount = 0;
+
+const PAPER = "#f2f2ef";
+const TINT = "#d4d4ce";
+const INK = "#141414";
+const TURN = 4;
 
 export function kit() {
   const out = [];
@@ -265,6 +271,182 @@ export function kit() {
       );
       moods.forEach((mood, i) => faces[mood.face](span(i)));
       return { tip: [X(0), Y(-161)], right: X(128), bottom: Y(130) };
+    },
+    // One person, drawn as an outlined avatar in two tones: a bold ink line, a flat tint for
+    // hair and one piece of clothing, dot eyes and a small mouth. (cx, cy) is the centre of
+    // the face.
+    //   look   bun | short | long | beard | older
+    //   faces  [{ face }, { b, at, face }, ...] the face on arrival, then each change of it.
+    //   top    band | tie | lapels | pocket | none
+    //   gaze   [{ b, to: [x, y], pos?: [x, y], t? }] where the face turns on each hold.
+    person(cx, cy, s, look, o = {}) {
+      const X = (v) => r(cx + v * s);
+      const Y = (v) => r(cy + v * s);
+      const L = (v) => r(v * s);
+      const pt = (x, y) => `${X(x)} ${Y(y)}`;
+      const line = `stroke: ${INK}; stroke-width: ${L(2.1)}; stroke-linejoin: round; stroke-linecap: round`;
+      const shape = (d, fill = PAPER, extra = "") =>
+        out.push(`<path style="fill: ${fill}; ${line}" d="${d}"${extra}/>`);
+      const strokePath = (d, extra = "") => shape(d, "none", extra);
+      const flat = (d, fill = TINT) => out.push(`<path style="fill: ${fill}" d="${d}"/>`);
+      const pattrs = (opt, type) =>
+        `data-b="${opt.b ?? 1}" data-a="${type}" data-at="${r(opt.at ?? 0)}"` +
+        (opt.dur != null ? ` data-dur="${opt.dur}"` : "") +
+        (opt.x != null ? ` data-x="${opt.x}"` : "");
+
+      let arrive = { x: 0, y: 0 };
+      let seen = arrive;
+      const turns = [];
+      (o.gaze ?? []).forEach((g, i) => {
+        const [px, py] = g.pos ?? [cx, cy];
+        const dx = g.to[0] - px;
+        const dy = g.to[1] - py;
+        const len = Math.hypot(dx, dy) || 1;
+        const at = { x: r((dx / len) * TURN * s), y: r((dy / len) * TURN * 0.7 * s) };
+        if (i === 0) arrive = seen = at;
+        else if (Math.hypot(at.x - seen.x, at.y - seen.y) > 0.5) {
+          turns.push({ b: g.b, t: g.t ?? 0.1, x: r(at.x - seen.x), y: r(at.y - seen.y) });
+          seen = at;
+        }
+      });
+
+      const cap = `M${pt(-36, -3)}V${Y(-22)}C${pt(-36, -54)} ${pt(36, -54)} ${pt(36, -22)}V${Y(-3)}`;
+
+      out.push(`<g ${pattrs({ b: o.b, at: o.at, dur: 0.35, x: o.x }, "snap")}>`);
+      if (look === "long") {
+        shape(
+          `M${pt(-45, -20)}C${pt(-45, -62)} ${pt(45, -62)} ${pt(45, -20)}V${Y(50)}Q${pt(45, 66)} ${pt(30, 66)}` +
+            `H${X(-30)}Q${pt(-45, 66)} ${pt(-45, 50)}Z`,
+          TINT,
+        );
+      }
+
+      shape(
+        `M${pt(-82, 132)}V${Y(102)}Q${pt(-82, 76)} ${pt(-56, 68)}L${pt(-14, 54)}V${Y(38)}H${X(14)}V${Y(54)}` +
+          `L${pt(56, 68)}Q${pt(82, 76)} ${pt(82, 102)}V${Y(132)}Z`,
+      );
+      const top = o.top ?? "none";
+      if (top === "band") flat(`M${pt(-81, 100)}H${X(81)}V${Y(116)}H${X(-81)}Z`);
+      if (top === "pocket") flat(`M${pt(28, 94)}H${X(56)}V${Y(114)}H${X(28)}Z`);
+      if (top === "lapels") {
+        shape(`M${pt(-14, 54)}L${pt(-32, 88)}L${pt(0, 72)}Z`, TINT);
+        shape(`M${pt(14, 54)}L${pt(32, 88)}L${pt(0, 72)}Z`, TINT);
+      } else if (look === "beard" || look === "older") strokePath(`M${pt(-14, 54)}Q${pt(0, 74)} ${pt(14, 54)}`);
+      else strokePath(`M${pt(-14, 54)}L${pt(0, 72)}L${pt(14, 54)}`);
+      if (top === "tie") shape(`M${pt(-5, 74)}H${X(5)}L${pt(8, 112)}L${pt(0, 122)}L${pt(-8, 112)}Z`, TINT);
+
+      [-1, 1].forEach((side) =>
+        out.push(`<circle style="fill: ${PAPER}; ${line}" cx="${X(side * 35)}" cy="${Y(4)}" r="${L(8)}"/>`),
+      );
+      shape(
+        `M${pt(-34, -22)}C${pt(-34, -52)} ${pt(34, -52)} ${pt(34, -22)}V${Y(8)}A${L(34)} ${L(34)} 0 0 1 ${pt(-34, 8)}Z`,
+      );
+      if (look === "beard") {
+        shape(
+          `M${pt(-34, 6)}V${Y(8)}A${L(34)} ${L(34)} 0 0 0 ${pt(34, 8)}V${Y(6)}Q${pt(24, 30)} ${pt(0, 30)}` +
+            `Q${pt(-24, 30)} ${pt(-34, 6)}Z`,
+          TINT,
+        );
+      }
+
+      if (look === "bun") {
+        out.push(`<circle style="fill: ${TINT}; ${line}" cx="${X(0)}" cy="${Y(-58)}" r="${L(15)}"/>`);
+        shape(`${cap}Q${pt(28, -26)} ${pt(0, -27)}Q${pt(-28, -26)} ${pt(-36, -3)}Z`, TINT);
+      }
+      if (look === "short") shape(`${cap}Q${pt(30, -22)} ${pt(12, -23)}Q${pt(-12, -25)} ${pt(-36, -3)}Z`, TINT);
+      if (look === "beard") shape(`${cap}L${pt(29, -19)}H${X(-29)}L${pt(-36, -3)}Z`, TINT);
+      if (look === "long") shape(`${cap}Q${pt(30, -30)} ${pt(0, -35)}Q${pt(-30, -30)} ${pt(-36, -3)}Z`, TINT);
+      if (look === "older") {
+        [-1, 1].forEach((side) =>
+          shape(
+            `M${pt(side * 36, -3)}V${Y(-20)}Q${pt(side * 36, -30)} ${pt(side * 29, -35)}` +
+              `Q${pt(side * 27, -16)} ${pt(side * 36, -3)}Z`,
+            TINT,
+          ),
+        );
+      }
+
+      const who = personCount++;
+      turns.forEach((m) =>
+        out.push(
+          `<g data-shift-b="${m.b}" data-shift-x="${m.x}" data-shift-y="${m.y}" data-shift-dur="0.35" data-shift-at="${m.t}">`,
+        ),
+      );
+      out.push(`<g transform="translate(${arrive.x} ${arrive.y})">`);
+      const blink = `data-phase="${r(who * 1.37)}" data-every="${r(3.1 + (who % 4) * 0.55)}"`;
+      [-13, 13].forEach((ex) => {
+        out.push(`<g data-idle="blink" data-origin="${X(ex)} ${Y(0)}" ${blink}>`);
+        out.push(`<circle style="fill: ${INK}" cx="${X(ex)}" cy="${Y(0)}" r="${L(3.3)}"/>`);
+        out.push(`</g>`);
+      });
+      const low = look === "older" ? 7 : 0;
+      if (look === "older") {
+        flat(
+          `M${pt(-15, 12)}Q${pt(-7, 5)} ${pt(0, 10)}Q${pt(7, 5)} ${pt(15, 12)}Q${pt(7, 17)} ${pt(0, 14)}` +
+            `Q${pt(-7, 17)} ${pt(-15, 12)}Z`,
+          INK,
+        );
+      }
+
+      const browOf = {
+        level: (side) => `M${pt(side * 19, -9)}Q${pt(side * 13, -12)} ${pt(side * 7, -9)}`,
+        raised: (side) => `M${pt(side * 19, -10)}Q${pt(side * 13, -15)} ${pt(side * 7, -11)}`,
+        high: (side) => `M${pt(side * 20, -14)}Q${pt(side * 13, -21)} ${pt(side * 6, -15)}`,
+        worried: (side) => `M${pt(side * 20, -8)}L${pt(side * 7, -13)}`,
+        cocked: (side) => (side === 1 ? browOf.raised(side) : browOf.level(side)),
+        uneven: (side) => (side === 1 ? browOf.high(side) : `M${pt(-20, -12)}L${pt(-7, -8)}`),
+      };
+      const mouthOf = {
+        smile: () => strokePath(`M${pt(-7, 14 + low)}A${L(7)} ${L(7)} 0 0 0 ${pt(7, 14 + low)}`),
+        broad: () => strokePath(`M${pt(-11, 12)}A${L(11)} ${L(11)} 0 0 0 ${pt(11, 12)}`),
+        grin: () => shape(`M${pt(-10, 12)}A${L(10)} ${L(10)} 0 0 0 ${pt(10, 12)}Z`, INK),
+        smirk: () => strokePath(`M${pt(-7, 17)}Q${pt(2, 23)} ${pt(10, 13)}`),
+        side: () =>
+          shape(
+            `M${pt(-9, 14)}Q${pt(2, 17)} ${pt(11, 11)}Q${pt(9, 25)} ${pt(-1, 23)}Q${pt(-7, 21)} ${pt(-9, 14)}Z`,
+            INK,
+          ),
+        flat: () => strokePath(`M${pt(-5, 17 + low)}H${X(5)}`),
+        gasp: () =>
+          out.push(
+            `<ellipse style="fill: ${INK}" cx="${X(0)}" cy="${Y(19 + low)}" rx="${L(4.6)}" ry="${L(6.2)}"/>`,
+          ),
+        wavy: () => strokePath(`M${pt(-9, 18)}q${L(3)} ${L(-5)} ${L(6)} 0t${L(6)} 0t${L(6)} 0`),
+      };
+
+      const faces = o.faces ?? [{ face: {} }];
+      faces.forEach((state, i) => {
+        const next = faces[i + 1];
+        const f = state.face ?? {};
+        let timing = i ? " " + pattrs({ b: state.b, at: state.at }, "pop") : "";
+        if (next) timing += ` data-x="${next.b}" data-xat="${r(Math.max(0, next.at - 0.1))}"`;
+        out.push(`<g${timing}>`);
+        if (f.eyes === "wide") {
+          [-13, 13].forEach((ex) =>
+            out.push(`<circle style="fill: ${INK}" cx="${X(ex)}" cy="${Y(0)}" r="${L(4.8)}"/>`),
+          );
+        }
+        if (f.brows && f.brows !== "none") [-1, 1].forEach((side) => strokePath(browOf[f.brows](side)));
+        out.push(
+          `<g data-idle="mouth" data-origin="${X(0)} ${Y(16 + low)}" data-amp="0.08" data-phase="${r(who * 0.9)}" data-every="${r(2.3 + (who % 3) * 0.45)}">`,
+        );
+        mouthOf[f.mouth ?? "smile"]();
+        out.push(`</g>`);
+        if (f.mark === "shock") {
+          [-1, 1].forEach((side) => {
+            strokePath(`M${pt(side * 50, -34)}L${pt(side * 60, -43)}`);
+            strokePath(`M${pt(side * 55, -17)}L${pt(side * 67, -20)}`);
+          });
+        }
+        if (f.mark === "what") {
+          out.push(`<text class="t1" x="${X(46)}" y="${Y(-40)}" data-layout-allow-overlap>?</text>`);
+        }
+        out.push(`</g>`);
+      });
+      out.push(`</g>`);
+      turns.forEach(() => out.push(`</g>`));
+      out.push(`</g>`);
+      return k;
     },
     // The one caption for a hold, bottom right. It leaves when the next hold starts unless kept.
     cap(text, b, o = {}) {

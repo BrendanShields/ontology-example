@@ -15,19 +15,19 @@ const files = fs
 // Ids are file names and do not follow this order; a file not listed here goes to the end.
 const ORDER = [
   "s01", // an agent guesses; structure gives it one permitted route
-  "s02", // ontologies already run everyday products
   "s03", // what it costs an engineering team to lack one, and the fix
   "s17", // what the same map does for the people: less to hold in their heads
+  "s05", // "the model could just read it, or search it"
+  "s02", // ontologies already run everyday products
   "s07", // what the word means, next to three it is confused with
   "s08", // what the rules buy: inference
   "s09", // how it is written down: four standards
   "s10", // nouns are not enough: logic and actions
   "s06", // "this was tried in the 1980s"
-  "s05", // "the model could just read it, or search it"
+  "s11", // high-trust environment: the inverted pyramid, and where the why lives
   "s04", // which part of the system does which job
-  "s12", // one turn of the loop
-  "s13", // what the agent gets to see
-  "s11", // how people keep trust at volume, and where the why lives
+  "s12", // the write path: one turn of the loop
+  "s13", // the read path: what the agent gets to see
   "s14", // all of it on one change
   "s15", // where it goes wrong, and how to start
   "s16",

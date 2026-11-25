@@ -3,7 +3,7 @@ import { kit } from "../kit.mjs";
 export default {
   id: "s06",
   holds: 4,
-  eyebrow: "06 / HISTORY",
+  eyebrow: "10 / HISTORY",
   title: ["Why symbolic AI stalled in the 1980s", "and why it works now"],
   body() {
     const k = kit();

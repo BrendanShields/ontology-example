@@ -3,20 +3,20 @@ import { kit } from "../kit.mjs";
 export default {
   id: "s09",
   holds: 5,
-  eyebrow: "09 / STANDARDS",
+  eyebrow: "08 / STANDARDS",
   title: ["Open world, closed world"],
   body() {
     const k = kit();
-    // The strip names each standard as its scene starts, as on slide 2.
+    // The strip names each standard as its scene starts, underlined while active, as on slide 5.
     [
-      [126, "RDF", 1, 2, 70],
-      [286, "SPARQL", 2, 3, 122],
-      [498, "OWL", 3, 4, 72],
-      [660, "SHACL", 4, 5, 104],
+      [126, "RDF", 1, 2, 86],
+      [286, "SPARQL", 2, 3, 144],
+      [498, "OWL", 3, 4, 94],
+      [660, "SHACL", 4, 5, 126],
     ].forEach(([x, name, b, x2, w]) => {
       k.sq(x, 279, { b, at: 0.05, solid: true, size: 12 });
       k.text(x + 22, 290, name, { b, at: 0.1, c: "t1s" });
-      k.brk(x - 22, 250, w + 60, 58, { b, at: 0.2, len: 14, x: x2 });
+      k.line(x + 22, 304, x + w, 304, { b, at: 0.2, dur: 0.3, x: x2 });
     });
 
     // 1. RDF: every fact is three parts.

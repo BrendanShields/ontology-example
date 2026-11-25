@@ -3,7 +3,7 @@ import { kit } from "../kit.mjs";
 export default {
   id: "s15",
   holds: 5,
-  eyebrow: "15 / TRADE-OFFS + ROLLOUT",
+  eyebrow: "16 / TRADE-OFFS + ROLLOUT",
   title: ["Where this goes wrong, and how to start"],
   body() {
     const k = kit();
@@ -54,7 +54,7 @@ export default {
     const y = 770;
     k.line(120, y, 1800, y, { b: 5, at: 0, dur: 0.9 });
     [
-      [120, "WEEK 1", "10 to 20 classes, one domain"],
+      [120, "WEEK 1", "Import metadata, 10–20 classes"],
       [700, "MONTH 1", "Tools and evidence"],
       [1280, "QUARTER 1", "Actions and fast checks"],
     ].forEach(([x, when, what], i) => {

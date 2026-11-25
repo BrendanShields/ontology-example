@@ -7,7 +7,7 @@ export default {
   title: ["The inverted pyramid, and where the why lives"],
   body() {
     const k = kit();
-    k.src("LAUREN TAN, AI ENGINEER 2026", { at: 1.4 });
+    k.src("LAUREN TAN, AI ENGINEER CODE 2026", { at: 1.4 });
 
     // 1. What one reviewer handles now: 3 a day became 300, 1 in 200 is reverted, comments are gone.
     [0, 1, 2].forEach((i) => k.rect(200, 628 - i * 14, 110, 10, { b: 1, at: 0.2 + i * 0.05, dur: 0.2, x: 2 }));
@@ -75,7 +75,7 @@ export default {
       k.line(1376, y, 1410, y, { b: 3, at: 1.15 + i * 0.08, dur: 0.15 });
     });
     k.text(1200, 756, "Git-versioned ontology", { b: 3, at: 1.3, c: "t1" });
-    k.text(1200, 808, "RULES AND DECISIONS, REVIEWED", { b: 3, at: 1.45, c: "m2" });
+    k.text(1200, 808, "LINKML + ADRS, REVIEWED", { b: 3, at: 1.45, c: "m2" });
     k.cap("WITH NO COMMENTS, THE WHY NEEDS A HOME", 3, { at: 1.7, keep: true });
     return k.svg();
   },

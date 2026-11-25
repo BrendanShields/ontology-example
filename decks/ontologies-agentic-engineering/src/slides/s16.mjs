@@ -10,7 +10,7 @@ const takes = [
 export default {
   id: "s16",
   holds: 3,
-  eyebrow: "16 / DISCUSSION",
+  eyebrow: "17 / DISCUSSION",
   title: ["Recap and discussion"],
   css: `      .take {
         position: absolute;

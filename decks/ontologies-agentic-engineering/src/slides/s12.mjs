@@ -3,8 +3,8 @@ import { kit } from "../kit.mjs";
 export default {
   id: "s12",
   holds: 4,
-  eyebrow: "12 / RUNTIME LOOP",
-  title: ["Pydantic at the door, ontology at the ledger"],
+  eyebrow: "13 / RUNTIME LOOP",
+  title: ["Two gates check every write before it happens"],
   body() {
     const k = kit();
     const y = 610;

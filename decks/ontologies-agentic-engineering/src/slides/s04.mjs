@@ -3,7 +3,7 @@ import { kit } from "../kit.mjs";
 export default {
   id: "s04",
   holds: 4,
-  eyebrow: "04 / THREE LAYERS",
+  eyebrow: "12 / THREE LAYERS",
   title: ["Three layers for three kinds of work"],
   body() {
     const k = kit();
@@ -32,7 +32,7 @@ export default {
     k.mk(tip[0], tip[1], { b: 2, at: 0, dur: 0.9 });
     k.text(col.quick, 616, "Decision model", { b: 2, at: 0.9, c: "t1", anchor: "middle" });
     [0, 1].forEach((i) => ask(col.quick, i, asks[i], { b: 2, at: 1.1 + i * 0.2 }));
-    k.text(col.quick, rows[2] + 10, "UP TO ~400× CHEAPER", { b: 2, at: 1.6, c: "m2", anchor: "middle" });
+    k.text(col.quick, rows[2] + 10, "~400× CHEAPER · TYPESAFE", { b: 2, at: 1.6, c: "m2", anchor: "middle" });
     k.cap("QUICK CALLS GO TO A FAST, TYPED MODEL", 2, { at: 1.7 });
     k.src("VENDOR FIGURE (TYPESAFE)", { b: 2, at: 1.8, x: 3 });
 

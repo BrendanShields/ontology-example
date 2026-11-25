@@ -3,7 +3,7 @@ import { kit } from "../kit.mjs";
 export default {
   id: "s10",
   holds: 4,
-  eyebrow: "10 / ACTIONS",
+  eyebrow: "09 / ACTIONS",
   title: ["Nouns are not enough"],
   body() {
     const k = kit();

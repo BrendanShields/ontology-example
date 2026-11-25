@@ -3,7 +3,7 @@ import { kit } from "../kit.mjs";
 export default {
   id: "s08",
   holds: 4,
-  eyebrow: "08 / INFERENCE",
+  eyebrow: "07 / INFERENCE",
   title: ["Deriving what was never written down"],
   body() {
     const k = kit();
@@ -42,9 +42,11 @@ export default {
     k.mk(132, 846, { b: 4, at: 0, dur: 0.9 });
     k.text(160, 812, "SUPERSEDES, CHAINED", { b: 4, at: 0.5, c: "m2" });
     k.text(160, 858, "ADR_005 → ADR_004 → ADR_001", { b: 4, at: 0.6, c: "cd" });
-    k.text(1020, 812, "NEVER BOTH", { b: 4, at: 0.8, c: "m2" });
-    k.text(1020, 858, "Customer ≠ SupportRep", { b: 4, at: 0.9, c: "cd" });
-    k.cap("THE SAME RULES, ON ENGINEERING RECORDS", 4, { at: 1.3, keep: true });
+    k.text(720, 812, "NEVER BOTH", { b: 4, at: 0.8, c: "m2" });
+    k.text(720, 858, "Customer ≠ SupportRep", { b: 4, at: 0.9, c: "cd" });
+    k.text(1190, 812, "CLOSED SET", { b: 4, at: 1.1, c: "m2" });
+    k.text(1190, 858, "paid | shipped | refunded", { b: 4, at: 1.2, c: "cd" });
+    k.cap("THE SAME RULES, ON ENGINEERING RECORDS", 4, { at: 1.5, keep: true });
     return k.svg();
   },
 };
