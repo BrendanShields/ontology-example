@@ -242,13 +242,13 @@ def _check_terms(args) -> int:
 
 def _check_terms_hook(ws, event: dict) -> int:
     """PostToolUse: check the file an Edit or Write just touched."""
-    from . import hooks, terms
+    from . import hooks, paths, terms
     from .workitems import validate
 
     file = hooks.edited_file(event)
     if not file:
         return 0
-    rel = ws.cfg.rel(file)
+    rel = ws.cfg.rel(paths.stored(ws.cfg.root / file))
     text = _read(ws.cfg.root / rel)
     if text is None:
         return 0
@@ -276,10 +276,13 @@ def _guard(args) -> int:
     from . import guard, hooks
 
     ws = _workspace()
-    file = args.path or hooks.edited_file(hooks.read_event())
+    if args.deny_rules or args.check_settings:
+        return _deny_rules(ws.cfg, check=args.check_settings)
+    event = {} if args.path else hooks.read_event()
+    file = args.path or hooks.edited_file(event)
     if not file:
         return 0
-    decision, reason = guard.decide(ws, file)
+    decision, reason = guard.decide(ws, file, event.get("tool_input"))
     if args.path:  # asked by hand: just say what would happen
         print(f"{decision}: {reason}" if reason else decision)
         return 0
@@ -289,6 +292,18 @@ def _guard(args) -> int:
     if decision == guard.ASK:
         print(hooks.permission_decision("ask", reason))
     return 0
+
+
+def _deny_rules(cfg, *, check: bool) -> int:
+    from . import denyrules
+
+    if not check:
+        print(denyrules.render(cfg))
+        return 0
+    problems = denyrules.missing(cfg)
+    _emit(problems, "text")
+    print(f"onto guard --check-settings: {report.summary(problems)}")
+    return 1 if problems else 0
 
 
 # --- the graph -------------------------------------------------------------------
@@ -675,6 +690,16 @@ def _parser() -> argparse.ArgumentParser:
 
     p = command("guard", _guard, "PreToolUse hook: protect ontology sources and generated files")
     p.add_argument("path", nargs="?", help="ask what the guard would decide for a path")
+    p.add_argument(
+        "--deny-rules",
+        action="store_true",
+        help="print the permissions.deny rules for generated files and evidence",
+    )
+    p.add_argument(
+        "--check-settings",
+        action="store_true",
+        help="fail if .claude/settings.json lacks one of those rules",
+    )
 
     p = command("build", _build, "build the traceability graph and report its size")
     p.add_argument("--out", help="also write the graph to this file")

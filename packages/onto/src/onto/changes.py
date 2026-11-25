@@ -13,12 +13,12 @@ from __future__ import annotations
 
 from .config import Config, matches
 from .gates import changed_files
+from .guard import APPROVED
 from .report import ERROR, Violation
 from .workspace import Workspace
 
 REQUESTED = "gate:OntologyChangeIsRequested"
 GENERATED = "gate:GeneratedMatchesSource"
-APPROVED = ("in_progress", "done")  # the statuses a person gives a request they accept
 
 
 def branch_problems(ws: Workspace, *, drift: bool = False) -> list[Violation]:

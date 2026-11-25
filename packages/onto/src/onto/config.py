@@ -10,6 +10,7 @@ from functools import lru_cache
 from pathlib import Path
 
 CONFIG_FILE = "onto.toml"
+GATE_FILES = (".github/CODEOWNERS", ".github/workflows/**")  # default of [guard] gate_files
 
 
 class ConfigError(Exception):
@@ -43,6 +44,7 @@ class Config:
     prov_dir: Path
     base_ref: str
     protected: tuple[str, ...]
+    gate_files: tuple[str, ...]  # an edit to one is put to a person, like onto.toml itself
     on_open_ocr: str  # "ask" | "allow"
     contexts: dict[str, Context]
 
@@ -144,6 +146,7 @@ def load_config(root: Path | None = None) -> Config:
         prov_dir=root / workflow.get("provenance", "prov"),
         base_ref=workflow.get("base_ref", "origin/main"),
         protected=tuple(guard.get("protected", ())),
+        gate_files=tuple(guard.get("gate_files", GATE_FILES)),
         on_open_ocr=on_open_ocr,
         contexts=contexts,
     )

@@ -41,6 +41,9 @@ jobs:
       - name: Domain layers use glossary vocabulary
         run: bin/onto check-terms
 
+      - name: Settings deny what onto.toml says is generated
+        run: bin/onto guard --check-settings
+
       - name: Lint
         run: uv run ruff check .
 

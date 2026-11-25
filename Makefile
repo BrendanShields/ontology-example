@@ -13,6 +13,7 @@ check:            ## every gate CI runs, in the order CI runs them
 	$(ONTO) gen --check
 	$(ONTO) validate
 	$(ONTO) check-terms
+	$(ONTO) guard --check-settings
 	uv run ruff check .
 	uv run pytest --onto-evidence
 	$(ONTO) trace
