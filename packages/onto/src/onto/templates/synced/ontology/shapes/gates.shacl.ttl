@@ -37,6 +37,7 @@ gate:CompleteRequirementIsVerified a sh:NodeShape ;
         sh:select """
             SELECT $this WHERE {
                 $this a wf:Requirement .
+                FILTER NOT EXISTS { $this wf:status "superseded" }
                 FILTER (
                     EXISTS { $this wf:status "done" }
                     || ( EXISTS { ?task wf:implements $this }
@@ -51,6 +52,7 @@ gate:CompleteRequirementIsVerified a sh:NodeShape ;
         sh:select """
             SELECT $this ?value WHERE {
                 $this a wf:Requirement .
+                FILTER NOT EXISTS { $this wf:status "superseded" }
                 ?value wf:verifies $this .
                 FILTER (
                     EXISTS { $this wf:status "done" }
@@ -102,7 +104,7 @@ gate:SupersededDecisionIsMarked a sh:NodeShape ;
         sh:prefixes gate: ;
         sh:select """
             SELECT $this ?value WHERE {
-                ?value prov:wasRevisionOf $this ; wf:status ?decided .
+                ?value a wf:Decision ; prov:wasRevisionOf $this ; wf:status ?decided .
                 FILTER (?decided IN ("done", "superseded"))
                 $this wf:status ?status .
                 FILTER (?status != "superseded")
@@ -114,7 +116,7 @@ gate:SupersededDecisionIsMarked a sh:NodeShape ;
             SELECT $this WHERE {
                 $this wf:status "superseded" .
                 FILTER NOT EXISTS {
-                    ?later prov:wasRevisionOf $this ; wf:status ?decided .
+                    ?later a wf:Decision ; prov:wasRevisionOf $this ; wf:status ?decided .
                     FILTER (?decided IN ("done", "superseded"))
                 }
             }""" ] ;
@@ -149,6 +151,13 @@ gate:ReplacedRequirementIsMarked a sh:NodeShape ;
             SELECT $this WHERE {
                 $this a wf:Requirement ; wf:status "superseded" .
                 FILTER NOT EXISTS { ?later a wf:Requirement ; prov:wasRevisionOf $this }
+            }""" ] ;
+    sh:sparql [
+        sh:message "Requirement replaces itself through a chain of Requirements." ;
+        sh:prefixes gate: ;
+        sh:select """
+            SELECT $this WHERE {
+                $this a wf:Requirement ; prov:wasRevisionOf+ $this .
             }""" ] .
 
 # --- Incidents ---------------------------------------------------------------
