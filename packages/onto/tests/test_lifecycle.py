@@ -365,6 +365,81 @@ def test_a_branch_that_supersedes_a_task_answers_for_the_change_that_resolved_it
     assert main(["trace", "--scope", "branch"]) == 0, capsys.readouterr().out
 
 
+def _drops_replaces(repo):
+    verified(repo, "REQ-0001", status="superseded")
+    verified(repo, "REQ-0002", status="done", replaces="REQ-0001")
+    yield
+    repo.item("REQ-0002", status="done")
+
+
+def _deletes_the_successor(repo):
+    verified(repo, "REQ-0001", status="superseded")
+    repo.item("REQ-0002", status="draft", replaces="REQ-0001")
+    yield
+    (repo.root / "work/REQ-0002.md").unlink()
+
+
+def _drops_raised_from(repo):
+    repo.item("INC-0001", status="done")
+    verified(repo, "REQ-0001", status="done", raised_from="INC-0001")
+    yield
+    repo.item("REQ-0001", status="done")
+
+
+def _points_the_test_elsewhere(repo):
+    verified(repo, "REQ-0001", status="done")
+    repo.item("REQ-0002")
+    yield
+    repo.item("TST-0001", verifies=["REQ-0002"])
+
+
+@pytest.mark.parametrize(
+    ("change", "subject", "rule"),
+    [
+        (_drops_replaces, "REQ-0001", REPLACED),
+        (_deletes_the_successor, "REQ-0001", REPLACED),
+        (_drops_raised_from, "INC-0001", CLOSED),
+        (_points_the_test_elsewhere, "REQ-0001", UNVERIFIED),
+    ],
+)
+@pytest.mark.parametrize("commit", [False, True], ids=["uncommitted", "committed"])
+def test_a_branch_that_takes_a_link_away_answers_for_what_the_link_held(
+    repo, monkeypatch, capsys, change, subject, rule, commit
+):
+    import io
+
+    from onto.hooks import BLOCK
+
+    steps = change(repo)
+    next(steps)
+    committed(repo)
+    assert main(["trace"]) == 0, capsys.readouterr().out
+    git(repo, "checkout", "-q", "-b", "work")
+    next(steps, None)
+    if commit:
+        git(repo, "add", "-A")
+        git(repo, "commit", "-q", "-m", "take the link away")
+    capsys.readouterr()
+
+    assert main(["trace"]) == 1
+    assert subject in gates.branch_scope(repo.ws())  # its own file was not touched
+    assert main(["trace", "--scope", "branch"]) == 1
+    out = capsys.readouterr().out
+    assert subject in out and rule in out
+
+    monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps({"hook_event_name": "Stop"})))
+    assert main(["trace", "--gate", "stop", "--scope", "branch"]) == BLOCK
+    assert subject in capsys.readouterr().err
+
+
+def test_a_base_file_that_cannot_be_read_adds_nothing_to_the_scope(repo):
+    repo.write("work/REQ-0002.md", "no frontmatter here\n")
+    committed(repo)
+    verified(repo, "REQ-0002", status="done")
+
+    assert gates.branch_scope(repo.ws()) == {"REQ-0002", "TST-0002", "EVD-0002"}
+
+
 def test_the_stop_gate_holds_an_incident_closed_too_early(repo, monkeypatch, capsys):
     import io
 

@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 
 from rdflib import RDF, Graph, Namespace
 
-from . import namespaces
+from . import frontmatter, namespaces
 from .config import CONFIG_FILE, Config
 from .failures import missing
 from .graph import WorkGraph
@@ -255,7 +255,7 @@ def changed_files(cfg: Config, *, or_uncommitted: bool = False) -> set[str] | No
     if not has_commits(cfg):  # everything is new
         changed = _git(cfg, "ls-files", "--cached") or ""
     else:
-        base = base_commit(cfg) or ("HEAD" if or_uncommitted else None)
+        base = _compared_with(cfg, or_uncommitted)
         if base is None:
             return None
         # Without rename detection a moved file is listed under both of its names.
@@ -263,13 +263,58 @@ def changed_files(cfg: Config, *, or_uncommitted: bool = False) -> set[str] | No
     return {line for line in (changed + untracked).splitlines() if line}
 
 
+def _compared_with(cfg: Config, or_uncommitted: bool) -> str | None:
+    return base_commit(cfg) or ("HEAD" if or_uncommitted else None)
+
+
+# The links a scope is followed along, by the class that carries them.
+TRACE_LINKS = {
+    "Task": ("implements",),
+    "Test": ("verifies",),
+    "Change": ("resolves",),
+    "Evidence": ("of_test",),
+    "Requirement": ("replaces", "raised_from"),
+    "Incident": ("breaks",),
+}
+
+
+def _linked_at_base(ws: Workspace, changed: set[str], or_uncommitted: bool) -> set[str]:
+    """What the work items a branch changed or deleted pointed at before it did.
+
+    A gate may fail on the far end of a link because the branch took the link
+    away: a superseded Requirement whose successor no longer names it, a done
+    Requirement whose Test now verifies another. The far end is not reached
+    from the items as they are now, so it is read from the base.
+    """
+    base = _compared_with(ws.cfg, or_uncommitted) if has_commits(ws.cfg) else None
+    if base is None:
+        return set()
+    work_prefix = ws.cfg.rel(ws.cfg.work_dir) + "/"
+    targets: set[str] = set()
+    for rel in changed:
+        if not (rel.startswith(work_prefix) and rel.endswith(".md")):
+            continue
+        before = _git(ws.cfg, "show", f"{base}:./{rel}")
+        if before is None:  # new on this branch
+            continue
+        try:
+            meta, _ = frontmatter.split(before)
+        except frontmatter.FrontmatterError:
+            continue  # it named nothing a reader could have followed
+        for slot in TRACE_LINKS.get(ws.schema.class_for_id(str(meta.get("id", ""))) or "", ()):
+            value = meta.get(slot)
+            targets.update(str(v) for v in (value if isinstance(value, list) else [value]) if v)
+    return targets
+
+
 def branch_scope(ws: Workspace, *, or_uncommitted: bool = False) -> set[str] | None:
     """The work items the current branch touches, with what they trace to. None means all.
 
     A branch is answerable for the items it changed and, when it changed an
     app's code, for every finished requirement of that app's bounded context:
-    they have to hold after the change as they did before it. A branch whose
-    changes are unknown is answerable for all of them.
+    they have to hold after the change as they did before it. It is answerable
+    as well for what those items linked to before it changed them. A branch
+    whose changes are unknown is answerable for all of them.
     """
     changed = changed_files(ws.cfg, or_uncommitted=or_uncommitted)
     if changed is None:
@@ -293,6 +338,7 @@ def branch_scope(ws: Workspace, *, or_uncommitted: bool = False) -> set[str] | N
                 for item in ws.of_class("Requirement")
                 if item.context == context.name and item.status == "done"
             )
+    ids |= _linked_at_base(ws, changed, or_uncommitted)
     return _closure(ws, ids)
 
 
@@ -300,19 +346,11 @@ def _closure(ws: Workspace, ids: set[str]) -> set[str]:
     """Follow the trace links both ways until nothing new is reached."""
     # A gate may report on the far end of a link: a replaced Requirement that is
     # not marked, an Incident closed before the Requirement raised from it is done.
-    links = {
-        "Task": ("implements",),
-        "Test": ("verifies",),
-        "Change": ("resolves",),
-        "Evidence": ("of_test",),
-        "Requirement": ("replaces", "raised_from"),
-        "Incident": ("breaks",),
-    }
     scope = set(ids)
     while True:
         grown = set(scope)
         for item in ws.items:
-            slots = links.get(item.cls or "")
+            slots = TRACE_LINKS.get(item.cls or "")
             if slots is None:
                 continue
             targets = {target for slot in slots for target in item.values(slot)}
