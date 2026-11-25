@@ -269,7 +269,7 @@ on pushes to `main`. Before you rely on it:
 - Make the `gates` job a required status check on the default branch. Until
   then a failing gate does not block a merge.
 
-On another CI system, run `make onto-check` or the four commands in `onto.mk`.
+On another CI system, run `make onto-check` or the commands in `onto.mk`.
 Do not pass `--gate stop` there: that mode reads a hook event from standard
 input and waits for it.
 
@@ -303,6 +303,9 @@ default branch:
 | Generated files match the ontology. | `onto gen --check` | no | yes |
 | A Requirement claimed done has a Test with passing evidence, and the other graph gates hold. | `onto trace` | when the agent stops, for what the branch touched | yes, for everything |
 | Each gate file and each question declares the namespace of the workflow ontology, and no other namespace in its place. | `onto trace` | when the agent stops, also on a branch that touched no work item | yes |
+| An ontology source the branch changed has an OntologyChangeRequest on the same branch, in progress or done, whatever tool changed it. The branch that brings the ontology layer in needs none. | `onto trace` | when the agent stops | yes |
+| The branch has a base to be compared with. Without one, every item is checked and the command fails until `base_ref` names a branch that is fetched. | `onto trace` | no: the uncommitted changes are judged | yes |
+| Each term the glossary binds as a rule or a computed slot has a function that produces it and a verified Requirement that uses it. | `onto rules` | no | yes |
 | Questions that expect no rows return none. | `onto cq --check` | no | not in the scaffolded workflow: add it if you want it |
 
 The hooks run only in Claude Code sessions, and a person can edit any file

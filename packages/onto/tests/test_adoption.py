@@ -113,7 +113,15 @@ def test_init_leaves_a_repository_in_which_every_gate_runs_clean(scaffolded):
     repo, done = scaffolded
     assert done.returncode == 0, done.stdout + done.stderr
 
-    for gate in (["gen", "--check"], ["validate"], ["check-terms"], ["trace"], ["cq", "--check"]):
+    for gate in (
+        ["gen", "--check"],
+        ["validate"],
+        ["check-terms"],
+        ["trace"],
+        ["rules"],
+        ["guard", "--check-settings"],
+        ["cq", "--check"],
+    ):
         result = onto(repo, *gate)
         assert result.returncode == 0, f"onto {' '.join(gate)}\n{result.stdout}{result.stderr}"
     assert "CQ-01" in onto(repo, "cq").stdout

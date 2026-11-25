@@ -12,6 +12,7 @@ onto-check:       ## every ontology gate CI runs, in the order CI runs them
 	$(ONTO) validate
 	$(ONTO) check-terms
 	$(ONTO) trace --collect
+	$(ONTO) rules
 
 onto-view:        ## where every task stands
 	$(ONTO) view

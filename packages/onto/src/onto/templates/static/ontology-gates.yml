@@ -46,6 +46,9 @@ jobs:
       - name: Tests of the Test items, then traceability and graph gates
         run: $ONTO trace --collect
 
+      - name: Bound rules have code and proof
+        run: $ONTO rules
+
       - name: Provenance bundle per change
         if: always()
         run: $ONTO prov emit
