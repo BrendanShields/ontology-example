@@ -21,6 +21,7 @@ import contextlib
 import hashlib
 import io
 import json
+import re
 import subprocess
 import time
 from collections import Counter
@@ -32,8 +33,10 @@ from .workspace import Workspace
 
 INDEX = "verify.json"
 PASSED, FAILED, ERRORED, SKIPPED = "passed", "failed", "error", "skipped"
-VIOLATION_FIELDS = ("rule", "severity", "subject", "file", "line")
-REQUIREMENT_FIELDS = ("id", "status", "risk_tier", "tasks", "tests", "verdict")
+RESULTS = ("pass", "fail")
+SEVERITIES = ("error", "warning")
+VERDICTS = ("untested", "failing", "no evidence", "verified")
+RULE_NAME = re.compile(r"[A-Za-z][\w:.-]*")
 
 
 def run(scope: str, out_dir: Path | None = None) -> int:
@@ -55,8 +58,9 @@ def run(scope: str, out_dir: Path | None = None) -> int:
     }
     try:
         _run_gates(cfg, scope, out_dir, index)
-    finally:
+        # Only a run that reached its end can say the gates hold.
         index["ok"] = all(gate["status"] in (PASSED, SKIPPED) for gate in index["gates"])
+    finally:
         index["varies_per_run"]["finished_at"] = _now()
         out_dir.mkdir(parents=True, exist_ok=True)
         target = out_dir / INDEX
@@ -126,11 +130,18 @@ def _run_gates(cfg: Config, scope: str, out_dir: Path, index: dict) -> None:
         in_scope = _scope(ws, scope)
         found = [e for e in ws.of_class("Evidence") if in_scope is None or e.id in in_scope]
         index["evidence"] = [
-            {"id": e.id, "of_test": _id(ws, e.meta.get("of_test")), "result": _result(e)}
+            {
+                "id": e.id,
+                "of_test": _id(ws, e.meta.get("of_test")),
+                "result": _one_of(e.meta.get("result"), RESULTS),
+            }
             for e in sorted(found, key=lambda e: e.id)
         ]
         varies["evidence"] = {
-            e.id: {key: str(e.meta[key]) for key in ("recorded_at", "commit_sha") if key in e.meta}
+            e.id: {
+                "recorded_at": _timestamp(e.meta.get("recorded_at")),
+                "commit_sha": _commit(e.meta.get("commit_sha")),
+            }
             for e in sorted(found, key=lambda e: e.id)
         }
         results = Counter(entry["result"] for entry in index["evidence"])
@@ -144,10 +155,7 @@ def _run_gates(cfg: Config, scope: str, out_dir: Path, index: dict) -> None:
         ws = Workspace.at(cfg.root)
         index["trace"] = {
             "coverage": {k: v for k, v in parsed.get("coverage", {}).items() if isinstance(v, int)},
-            "requirements": [
-                {key: row[key] for key in REQUIREMENT_FIELDS if key in row}
-                for row in parsed.get("requirements", [])
-            ],
+            "requirements": [_requirement(ws, row) for row in parsed.get("requirements", [])],
             "violations": [_violation(ws, v) for v in parsed.get("violations", [])],
         }
         return code, index["trace"]["coverage"] | _violation_counts(parsed.get("violations"))
@@ -239,17 +247,39 @@ def _violation_counts(parsed) -> dict:
         "errors": sum(1 for v in found if v.get("severity") == "error"),
         "warnings": sum(1 for v in found if v.get("severity") == "warning"),
     }
-    by_rule = Counter(str(v.get("rule")) for v in found)
+    by_rule = Counter(_rule(v.get("rule")) for v in found)
     if by_rule:
         counts["by_rule"] = dict(sorted(by_rule.items()))
     return counts
 
 
 def _violation(ws: Workspace, violation: dict) -> dict:
-    kept = {key: violation[key] for key in VIOLATION_FIELDS if key in violation}
-    if "subject" in kept:
-        kept["subject"] = _id(ws, kept["subject"])
-    return kept
+    file, line = violation.get("file"), violation.get("line")
+    kept = {
+        "rule": _rule(violation.get("rule")),
+        "severity": _one_of(violation.get("severity"), SEVERITIES),
+        "subject": _id(ws, violation.get("subject")),
+        "file": file if isinstance(file, str) and (ws.cfg.root / file).is_file() else None,
+        "line": line if isinstance(line, int) else None,
+    }
+    return {key: value for key, value in kept.items() if value is not None}
+
+
+def _requirement(ws: Workspace, row: dict) -> dict:
+    """A row of the trace matrix, each value checked against the closed set it comes from."""
+    enum = ws.schema.enum_values
+    return {
+        "id": _id(ws, row.get("id")),
+        "status": _one_of(row.get("status"), enum("StatusEnum")),
+        "risk_tier": _one_of(row.get("risk_tier"), enum("RiskTierEnum")),
+        "tasks": sorted(t for t in row.get("tasks", ()) if _id(ws, t)),
+        "tests": {
+            test: _one_of(result, RESULTS)
+            for test, result in sorted(row.get("tests", {}).items())
+            if _id(ws, test)
+        },
+        "verdict": _one_of(row.get("verdict"), VERDICTS),
+    }
 
 
 def _id(ws: Workspace, value) -> str | None:
@@ -257,9 +287,24 @@ def _id(ws: Workspace, value) -> str | None:
     return value if isinstance(value, str) and value in ws.by_id else None
 
 
-def _result(evidence) -> str | None:
-    result = evidence.meta.get("result")
-    return result if result in ("pass", "fail") else None
+def _one_of(value, allowed) -> str | None:
+    return value if isinstance(value, str) and value in allowed else None
+
+
+def _rule(value) -> str:
+    return value if isinstance(value, str) and RULE_NAME.fullmatch(value) else "unnamed"
+
+
+def _timestamp(value) -> str | None:
+    try:
+        datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return str(value)
+
+
+def _commit(value) -> str | None:
+    return value if isinstance(value, str) and re.fullmatch(r"[0-9a-f]{40}", value) else None
 
 
 def _scope(ws: Workspace, scope: str) -> set[str] | None:

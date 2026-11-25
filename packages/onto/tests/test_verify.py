@@ -191,7 +191,11 @@ def test_the_index_never_carries_text_only_ids_counts_and_rule_names(
         "    assert False, call\n",
     )
     repo.item("REQ-0001", status="done", title=f"Record {SENTINEL}", body=SENTINEL)
+    repo.item("REQ-0002", status=SENTINEL, risk_tier=SENTINEL)
     repo.item("TST-0001", title=SENTINEL)
+    repo.item(
+        "EVD-0009", of_test=SENTINEL, result=SENTINEL, recorded_at=SENTINEL, commit_sha=SENTINEL
+    )
     repo.item("DEC-0001", rationale=f"Because {SENTINEL}.", status=SENTINEL)
     repo.write(DOMAIN, f"def load_rubric_{SENTINEL}():\n    return '{SENTINEL}'\n")
 
@@ -237,6 +241,19 @@ def test_a_gate_that_crashes_is_an_error_named_by_its_kind_alone(repo, monkeypat
         "counts": {},
     }
     assert gate(index, "prov emit")["status"] == "passed"
+
+
+def test_an_interrupted_run_is_not_recorded_as_holding(repo, monkeypatch):
+    def rules(args) -> int:
+        raise KeyboardInterrupt
+
+    with_rules(monkeypatch, rules)
+    with pytest.raises(KeyboardInterrupt):
+        main(["verify"])
+
+    index = json.loads((repo.root / INDEX).read_text())
+    assert index["ok"] is False
+    assert [g["name"] for g in index["gates"]] == GATES[: GATES.index("rules")]
 
 
 def test_the_rules_gate_runs_when_this_onto_has_one(repo, monkeypatch):
