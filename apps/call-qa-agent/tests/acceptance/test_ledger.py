@@ -48,7 +48,11 @@ def path(tmp_path) -> Path:
 
 @pytest.fixture
 def run(path, capsys):
-    """Run a ledger command of `call-qa`. Returns (exit code, stdout, stderr)."""
+    """Run a ledger command of `call-qa`. Returns (exit code, stdout, stderr).
+
+    What `evaluate` prints is an Evaluation with its rationales. It is dropped
+    here, so that no failing assertion can show it.
+    """
 
     def command(name: str, call: str, *more: str) -> tuple[int, str, str]:
         if name == "stage":
@@ -56,7 +60,7 @@ def run(path, capsys):
         else:
             code = cli.main([name, str(path), call, CARD, *more])
         captured = capsys.readouterr()
-        return code, captured.out, captured.err
+        return code, "" if name == "stage" else captured.out, captured.err
 
     return command
 
@@ -82,9 +86,10 @@ class TestCommands:
     def test_evaluate_writes_nothing_unless_asked_to_stage(self, tmp_path, monkeypatch, capsys):
         monkeypatch.chdir(tmp_path)
 
-        assert evaluate(UNDER_REVIEW) == 0
-        capsys.readouterr()
+        code = evaluate(UNDER_REVIEW)
+        capsys.readouterr()  # the Evaluation, with its rationales: not for a failure message
 
+        assert code == 0
         assert list(tmp_path.iterdir()) == []
 
     def test_an_evaluation_that_stands_is_published_without_a_person(self, run, path):
@@ -154,8 +159,9 @@ class TestCommands:
 
     def test_a_ledger_that_cannot_be_written_or_read_is_a_failure(self, run, path, capsys):
         missing = path.parent / "no-such-folder" / "ledger.jsonl"
-        assert evaluate(STANDING, "--stage", str(missing)) == 2
+        code = evaluate(STANDING, "--stage", str(missing))
         capsys.readouterr()
+        assert code == 2
 
         path.write_text("not a line of a ledger\n", encoding="utf-8")
         for name, more in (("show", ()), ("publish", ()), ("review", confirm()), ("stage", ())):

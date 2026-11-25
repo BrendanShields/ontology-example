@@ -18,12 +18,14 @@ made of can be told from another of the same Call against the same Scorecard
 
 A command given again finds its effect already there and appends nothing
 (REQ-0024). Reading the file runs every line through the domain layer again,
-so a line that records a change the state machine does not permit is not
-believed: the read fails with `Corrupt`.
+so a line that records a change the state machine does not permit fails the
+read with `Corrupt`.
 
-What this is not: there is no lock, so two writers at once are not safe, and a
-reviewer is whatever identifier the caller gives. It is a record, not an
-access control.
+What this is not. That read checks that the lines agree with the rules, not
+who wrote them: a line that was removed is not noticed, and a staging line
+with another disposition reads as true. There is no lock, so two writers at
+once are not safe, and a reviewer is whatever identifier the caller gives. It
+is a record, not an access control.
 """
 
 from __future__ import annotations

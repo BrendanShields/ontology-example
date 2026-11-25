@@ -121,9 +121,13 @@ What to know before relying on it:
 - **A reviewer is whatever identifier you pass.** Nothing checks it. The ledger
   is a record of what was permitted, not an access control.
 - **One writer at a time.** There is no lock on the file.
-- **A ledger someone edited is not believed.** Every read runs each line through
-  the state machine again, and a line that records a change it does not permit
-  fails the command.
+- **The file is checked for consistency, not for tampering.** Every read runs
+  each line through the state machine again, so a line that records a change the
+  rules do not permit fails the command: a published line with no confirming
+  review before it, for one. A line that was removed is not noticed, and neither
+  is a staging line whose disposition was changed from needs-review to final.
+  Whoever can write the file can publish. Protect it as you would a system of
+  record.
 - **Giving a command again is safe.** It finds its effect on the ledger and
   records nothing more.
 
