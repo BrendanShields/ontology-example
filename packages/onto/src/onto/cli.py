@@ -381,14 +381,15 @@ def _scope(ws, name: str):
 
 
 def _trace(args) -> int:
-    from . import evidence, gates, hooks
+    from . import changes, evidence, gates, hooks
     from .graph import build_graph
 
     ws = _workspace()
     stop = args.gate == "stop"
     event = hooks.read_event() if stop else {}
     scope = _scope(ws, args.scope)
-    if scope is not None and not scope:
+    branch_problems = changes.branch_problems(ws, drift=stop)
+    if scope is not None and not scope and not branch_problems:
         if not stop:
             print("onto trace: nothing in scope on this branch")
         return 0
@@ -400,7 +401,7 @@ def _trace(args) -> int:
             return 1
 
     graph = build_graph(ws)
-    problems = gates.in_scope(gates.run_shacl(ws, graph), scope)
+    problems = gates.in_scope(gates.run_shacl(ws, graph), scope) + branch_problems
     rows = [
         row
         for row in gates.traceability(graph)
@@ -448,12 +449,16 @@ def _trace(args) -> int:
         return 0
     if not stop:
         return 1
+    blocking = report.errors(problems)
     message = (
-        "onto trace: the traceability gate does not hold for what this branch touched.\n"
-        f"{report.render_text(report.errors(problems))}\n"
-        "Make the tests pass, or take back the claim: a Requirement or Task that is not "
-        "verified is in_progress, not done."
+        "onto trace: the gates do not hold for what this branch touched.\n"
+        f"{report.render_text(blocking)}"
     )
+    if any(problem not in branch_problems for problem in blocking):
+        message += (
+            "\nMake the tests pass, or take back the claim: a Requirement or Task that is "
+            "not verified is in_progress, not done."
+        )
     print(message, file=sys.stderr)
     # One forced continuation is enough. If the gate still fails after it, hand
     # back to the person rather than loop: CI holds the line.

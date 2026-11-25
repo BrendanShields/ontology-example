@@ -197,7 +197,8 @@ def changed_files(cfg: Config) -> set[str] | None:
         if merge_base:
             base = merge_base.strip()
             break
-    changed = git("diff", "--name-only", "--relative", base)
+    # Without rename detection a moved file is listed under both of its names.
+    changed = git("diff", "--name-only", "--no-renames", "--relative", base)
     untracked = git("ls-files", "--others", "--exclude-standard")
     if changed is None:  # a repository without commits yet: everything is new
         changed = git("ls-files", "--cached") or ""
