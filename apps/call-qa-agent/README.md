@@ -118,9 +118,24 @@ What to know before relying on it:
   another (`DEC-0012`). A live model gives a different evaluation each time, so a
   second `--stage` of the same call is refused. A withheld evaluation cannot be
   replaced: that would take a change to the ontology.
-- **A reviewer is whatever identifier you pass.** Nothing checks it. The ledger
-  is a record of what was permitted, not an access control.
-- **One writer at a time.** There is no lock on the file.
+- **A reviewer is whatever identifier you pass.** Nothing checks who it is. The
+  one name that is refused is `call-qa-agent`, which the ledger writes as the
+  actor of a change no person made, so that the audit trail can tell a person's
+  permit from the system's. The ledger is a record of what was permitted, not an
+  access control.
+- **Commands given at once take turns.** A command that may write holds an
+  exclusive lock on the ledger file from before it reads until after it has
+  written, so two `publish` commands at once record one published line. The
+  lock is `flock`: it holds between processes on one machine (macOS and Linux),
+  and may not hold on a network file system.
+- **One bad line stops every call on the file.** A command that cannot read a
+  line exits 2 and names the line by its number, for every call on that ledger,
+  until a person has dealt with it. There is no repair command. A last line
+  with no line ending is what a write that was cut short leaves: nothing is
+  ever written after it, and removing that one line is the recovery, because
+  the command it came from did not finish and can be given again. An empty
+  line records nothing and is passed over. For any other bad line, find out who
+  wrote it before you remove it.
 - **The file is checked for consistency, not for tampering.** Every read runs
   each line through the state machine again, so a line that records a change the
   rules do not permit fails the command: a published line with no confirming

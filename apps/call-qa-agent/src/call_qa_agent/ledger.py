@@ -17,25 +17,37 @@ made of can be told from another of the same Call against the same Scorecard
 (DEC-0012).
 
 A command given again finds its effect already there and appends nothing
-(REQ-0024). Reading the file runs every line through the domain layer again,
-so a line that records a change the state machine does not permit fails the
-read with `Corrupt`.
+(REQ-0024). That holds for two commands given at once as well: a command that
+may append holds an exclusive lock on the file from before it reads until
+after it has appended, so the second one reads what the first one wrote.
+
+Reading the file runs every line through the domain layer again, so a line
+that records a change the state machine does not permit fails the read with
+`Corrupt`. So does a last line with no end, which is what a write that was cut
+short leaves: appending after it would join two lines into one. One such line
+stops every command on the file, for every Call, until a person has removed
+it. Nothing here repairs a ledger.
 
 What this is not. That read checks that the lines agree with the rules, not
 who wrote them: a line that was removed is not noticed, and a staging line
-with another disposition reads as true. There is no lock, so two writers at
-once are not safe, and a reviewer is whatever identifier the caller gives. It
-is a record, not an access control.
+with another disposition reads as true. The lock is `flock`, which holds
+between processes on one machine and may not hold on a network file system.
+A reviewer is whatever identifier the caller gives, as long as it is not the
+system's own. It is a record, not an access control.
 """
 
 from __future__ import annotations
 
+import fcntl
 import hashlib
 import json
-from collections.abc import Callable
+import os
+from collections.abc import Callable, Iterable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import TextIO
 
 from .domain import publication
 from .generated import (
@@ -80,6 +92,15 @@ def digest(evaluation: Evaluation) -> str:
     return hashlib.sha256(whole.encode("utf-8")).hexdigest()
 
 
+def is_identifier(value: str) -> bool:
+    return bool(value) and not any(character.isspace() for character in value)
+
+
+def _person(reviewer: str) -> bool:
+    """Whether a Review can name this reviewer: an identifier, and not the system's own."""
+    return is_identifier(reviewer) and reviewer != SYSTEM
+
+
 def _now() -> datetime:
     return datetime.now(UTC).replace(microsecond=0)
 
@@ -93,20 +114,10 @@ class Ledger:
 
     def entries(self) -> dict[tuple[str, str], Entry]:
         """Every Evaluation on the ledger, by Call and Scorecard. Raises Corrupt or OSError."""
-        entries: dict[tuple[str, str], Entry] = {}
         if not self.path.exists():
-            return entries
+            return {}
         with self.path.open(encoding="utf-8") as lines:
-            for number, text in enumerate(lines, start=1):
-                try:
-                    _apply(entries, json.loads(text))
-                except (ValueError, KeyError, TypeError):
-                    # A line that is not JSON, not a valid Review or AuditRecord, or not a
-                    # change the domain layer permits. The error could echo the line: dropped.
-                    raise Corrupt(
-                        f"{self.path}: line {number} is not one this ledger could hold"
-                    ) from None
-        return entries
+            return self._read(lines)
 
     def entry(self, call: str, scorecard: str) -> Entry | None:
         return self.entries().get((call, scorecard))
@@ -117,45 +128,56 @@ class Ledger:
         Raises `publication.Refused` if another Evaluation of the same Call against the
         same Scorecard is (DEC-0012).
         """
-        found = self.entry(evaluation.call, evaluation.scorecard)
-        if found is not None and found.sha256 == digest(evaluation):
-            return False
-        record = publication.stage(
-            evaluation, found.records if found else (), actor=SYSTEM, recorded_at=self.now()
-        )
-        self._append(
-            {
-                "audit_record": _plain(record),
-                "disposition": Disposition(evaluation.disposition).value,
-                "sha256": digest(evaluation),
-            }
-        )
-        return True
+        with self._alone(create=True) as (entries, ledger):
+            found = entries.get((evaluation.call, evaluation.scorecard))
+            if found is not None and found.sha256 == digest(evaluation):
+                return False
+            record = publication.stage(
+                evaluation, found.records if found else (), actor=SYSTEM, recorded_at=self.now()
+            )
+            _append(
+                ledger,
+                {
+                    "audit_record": _plain(record),
+                    "disposition": Disposition(evaluation.disposition).value,
+                    "sha256": digest(evaluation),
+                },
+            )
+            return True
 
     def review(self, call: str, scorecard: str, reviewer: str, outcome: ReviewOutcome) -> bool:
         """Record a Review. False if this reviewer's Review with this outcome is recorded already.
 
-        Raises `publication.Refused` if the Evaluation is not one to review.
+        Raises `publication.Refused` if the Evaluation is not one to review, or the reviewer
+        is not one a Review can name.
         """
-        found = self._staged(call, scorecard)
-        if any(
-            (made.reviewer, made.review_outcome) == (reviewer, outcome.value)
-            for made in found.reviews
-        ):
-            return False
-        made = Review(
-            call=call,
-            scorecard=scorecard,
-            reviewer=reviewer,
-            review_outcome=outcome,
-            reviewed_at=self.now(),
-        )
-        record = publication.review(made, found.disposition, found.records)
-        line = {"review": _plain(made)}
-        if record is not None:
-            line["audit_record"] = _plain(record)
-        self._append(line)
-        return True
+        if not _person(reviewer):
+            # The actor of a WITHHELD AuditRecord is the reviewer. Were it the system's own
+            # name, the trail could not tell a person's permit from the system's.
+            raise publication.Refused(
+                "a reviewer is an identifier with no spaces, "
+                f"and not {SYSTEM}, which is the system's own"
+            )
+        with self._alone() as (entries, ledger):
+            found = _staged(entries, call, scorecard)
+            if any(
+                (made.reviewer, made.review_outcome) == (reviewer, outcome.value)
+                for made in found.reviews
+            ):
+                return False
+            made = Review(
+                call=call,
+                scorecard=scorecard,
+                reviewer=reviewer,
+                review_outcome=outcome,
+                reviewed_at=self.now(),
+            )
+            record = publication.review(made, found.disposition, found.records)
+            line = {"review": _plain(made)}
+            if record is not None:
+                line["audit_record"] = _plain(record)
+            _append(ledger, line)
+            return True
 
     def publish(self, call: str, scorecard: str) -> bool:
         """Publish an Evaluation. False if it is PUBLISHED already.
@@ -163,30 +185,74 @@ class Ledger:
         Raises `publication.Refused`, with a REVIEW_REQUIRED Rejection when a Review is
         what is missing.
         """
-        found = self._staged(call, scorecard)
-        if found.publication_state is PublicationState.PUBLISHED:
-            return False
-        record = publication.publish(
-            call,
-            scorecard,
-            found.disposition,
-            found.reviews,
-            found.records,
-            actor=SYSTEM,
-            recorded_at=self.now(),
-        )
-        self._append({"audit_record": _plain(record)})
-        return True
+        with self._alone() as (entries, ledger):
+            found = _staged(entries, call, scorecard)
+            if found.publication_state is PublicationState.PUBLISHED:
+                return False
+            record = publication.publish(
+                call,
+                scorecard,
+                found.disposition,
+                found.reviews,
+                found.records,
+                actor=SYSTEM,
+                recorded_at=self.now(),
+            )
+            _append(ledger, {"audit_record": _plain(record)})
+            return True
 
-    def _staged(self, call: str, scorecard: str) -> Entry:
-        found = self.entry(call, scorecard)
-        if found is None:
-            raise publication.Refused(f"no Evaluation of {call} against {scorecard} is staged")
-        return found
+    @contextmanager
+    def _alone(
+        self, create: bool = False
+    ) -> Iterator[tuple[dict[tuple[str, str], Entry], TextIO | None]]:
+        """What the ledger holds and the file to append to, with no other writer until the exit.
 
-    def _append(self, line: dict) -> None:
-        with self.path.open("a", encoding="utf-8") as ledger:
-            ledger.write(json.dumps(line, sort_keys=True) + "\n")  # one write of one whole line
+        Without the lock two commands given at once both read the ledger as it was, and
+        both append. A ledger that is not there holds nothing, and only staging creates it.
+        """
+        flags = os.O_RDWR | os.O_APPEND | (os.O_CREAT if create else 0)
+        try:
+            descriptor = os.open(self.path, flags, 0o644)
+        except FileNotFoundError:
+            if create:
+                raise
+            yield {}, None
+            return
+        with os.fdopen(descriptor, "a+", encoding="utf-8") as ledger:
+            fcntl.flock(ledger, fcntl.LOCK_EX)  # let go of when the file is closed
+            ledger.seek(0)
+            yield self._read(ledger), ledger
+
+    def _read(self, lines: Iterable[str]) -> dict[tuple[str, str], Entry]:
+        entries: dict[tuple[str, str], Entry] = {}
+        for number, text in enumerate(lines, start=1):
+            if not text.endswith("\n"):
+                raise Corrupt(
+                    f"{self.path}: line {number} has no end: the write of it was cut short"
+                )
+            if not text.strip():
+                continue  # an empty line records nothing
+            try:
+                _apply(entries, json.loads(text))
+            except (ValueError, KeyError, TypeError):
+                # A line that is not JSON, not a valid Review or AuditRecord, or not a
+                # change the domain layer permits. The error could echo the line: dropped.
+                raise Corrupt(
+                    f"{self.path}: line {number} is not one this ledger could hold"
+                ) from None
+        return entries
+
+
+def _staged(entries: dict[tuple[str, str], Entry], call: str, scorecard: str) -> Entry:
+    found = entries.get((call, scorecard))
+    if found is None:
+        raise publication.Refused(f"no Evaluation of {call} against {scorecard} is staged")
+    return found
+
+
+def _append(ledger: TextIO, line: dict) -> None:
+    ledger.write(json.dumps(line, sort_keys=True) + "\n")  # one write of one whole line
+    ledger.flush()
 
 
 def _plain(model: Review | AuditRecord) -> dict:
@@ -199,6 +265,8 @@ def _apply(entries: dict[tuple[str, str], Entry], line: dict) -> None:
         raise ValueError("not a line of the ledger")
     record = AuditRecord.model_validate(line["audit_record"]) if "audit_record" in line else None
     made = Review.model_validate(line["review"]) if "review" in line else None
+    if made is not None and not _person(made.reviewer):
+        raise ValueError("not a reviewer a Review can name")
 
     if "disposition" in line:
         key = (record.call, record.scorecard)

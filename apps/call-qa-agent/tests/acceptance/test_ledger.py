@@ -8,6 +8,9 @@ exit codes only.
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
+import threading
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -134,6 +137,26 @@ class TestCommands:
 
         assert run("review", STANDING, *confirm())[0] == 1
         assert states(path) == [(STANDING, "STAGED", SYSTEM)]
+
+    @pytest.mark.parametrize("reviewer", [SYSTEM, "QA 0007", ""])
+    def test_a_review_names_a_person_and_never_the_system(self, path, reviewer):
+        ledger = Ledger(path, at_noon)
+        ledger.stage(CRITICAL_FAILURE)
+        before = path.read_text(encoding="utf-8")
+
+        for outcome in ReviewOutcome:
+            with pytest.raises(Refused):
+                ledger.review(*KEY, reviewer, outcome)
+        with pytest.raises(Refused):  # so no permit was recorded
+            ledger.publish(*KEY)
+        assert path.read_text(encoding="utf-8") == before
+
+    def test_the_cli_refuses_a_review_in_the_systems_name(self, run, path):
+        run("stage", UNDER_REVIEW)
+
+        assert run("review", UNDER_REVIEW, *confirm(SYSTEM))[0] == 1
+        assert run("publish", UNDER_REVIEW)[0] == 1
+        assert states(path) == [(UNDER_REVIEW, "STAGED", SYSTEM)]
 
     def test_show_gives_the_state_and_the_audit_trail_by_identifiers(self, run):
         run("stage", UNDER_REVIEW)
@@ -296,6 +319,50 @@ class TestGivenAgain:
         assert path.read_text(encoding="utf-8") == once
         assert len(once.splitlines()) == len(script)
 
+    @pytest.mark.parametrize("command", ["stage", "review", "publish"])
+    def test_a_command_given_twice_at_once_records_one_line(self, path, command):
+        """The second is given after the first has read the ledger and before it appends."""
+        give = {
+            "stage": lambda ledger: ledger.stage(CRITICAL_FAILURE),
+            "review": lambda ledger: ledger.review(*KEY, "QA-0007", ReviewOutcome.CONFIRMED),
+            "publish": lambda ledger: ledger.publish(*KEY),
+        }
+        for earlier in ("stage", "review", "publish"):
+            if earlier == command:
+                break
+            give[earlier](Ledger(path, at_noon))
+        before = len(path.read_text(encoding="utf-8").splitlines()) if path.exists() else 0
+        second: list[bool] = []
+        other = threading.Thread(
+            target=lambda: second.append(give[command](Ledger(path, at_noon))), daemon=True
+        )
+
+        def in_the_middle() -> datetime:
+            # The clock is read between the read of the ledger and the append.
+            other.start()
+            other.join(timeout=0.5)
+            return at_noon()
+
+        first = give[command](Ledger(path, in_the_middle))
+        other.join(timeout=10)
+
+        assert (first, second) == (True, [False])
+        assert len(path.read_text(encoding="utf-8").splitlines()) == before + 1
+        Ledger(path).entries()  # and it still reads
+
+    def test_eight_publish_commands_at_once_record_one_audit_record(self, run, path):
+        run("stage", STANDING)
+        argv = [sys.executable, "-m", "call_qa_agent.cli", "publish", str(path), STANDING, CARD]
+
+        started = [
+            subprocess.Popen(argv, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            for _ in range(8)
+        ]
+
+        assert [process.wait(timeout=60) for process in started] == [0] * 8
+        assert states(path) == [(STANDING, "STAGED", SYSTEM), (STANDING, "PUBLISHED", SYSTEM)]
+        assert run("show", STANDING)[0] == 0
+
 
 class TestALedgerNobodyWrote:
     """Reading goes through the domain layer, so a line that claims too much is not believed."""
@@ -315,6 +382,7 @@ class TestALedgerNobodyWrote:
             "a rationale inside the AuditRecord",
             "withheld by nobody",
             "a Review of a Call that is not there",
+            "a Review by the system",
             "not JSON",
         ],
     )
@@ -337,6 +405,9 @@ class TestALedgerNobodyWrote:
             "a rationale inside the AuditRecord": {"audit_record": {**record, "rationale": "r"}},
             "withheld by nobody": {"audit_record": {**record, "publication_state": "WITHHELD"}},
             "a Review of a Call that is not there": {"review": {**review, "call": "CALL-9999"}},
+            "a Review by the system": {
+                "review": {**review, "reviewer": SYSTEM, "review_outcome": "CONFIRMED"}
+            },
             "not JSON": None,
         }[claim]
         with path.open("a", encoding="utf-8") as ledger:
@@ -344,3 +415,37 @@ class TestALedgerNobodyWrote:
 
         with pytest.raises(Corrupt, match="line 2"):
             Ledger(path).entries()
+
+    @pytest.mark.parametrize("cut", ["a line cut short", "a whole line with no end"])
+    def test_a_last_line_with_no_end_is_corrupt_and_nothing_is_joined_to_it(self, path, cut):
+        ledger = Ledger(path, at_noon)
+        ledger.stage(STANDS)
+        (staged,) = (json.loads(line) for line in path.read_text(encoding="utf-8").splitlines())
+        # The line a publication would have written, had its write been whole.
+        whole = json.dumps(
+            {"audit_record": {**staged["audit_record"], "publication_state": "PUBLISHED"}}
+        )
+        with path.open("a", encoding="utf-8") as file:
+            file.write(whole[:40] if cut == "a line cut short" else whole)
+        before = path.read_text(encoding="utf-8")
+
+        with pytest.raises(Corrupt, match="line 2"):
+            ledger.entries()
+        for command in (
+            lambda: ledger.publish(STANDS.call, STANDS.scorecard),
+            lambda: ledger.review(*KEY, "QA-0007", ReviewOutcome.CONFIRMED),
+            lambda: ledger.stage(STANDS.model_copy(update={"call": "CALL-9201"})),
+        ):
+            with pytest.raises(Corrupt, match="line 2"):
+                command()
+        assert path.read_text(encoding="utf-8") == before
+
+    def test_an_empty_line_records_nothing_and_stops_nothing(self, path):
+        self.lines(path)
+        with path.open("a", encoding="utf-8") as ledger:
+            ledger.write("\n")
+        ledger = Ledger(path, at_noon)
+
+        assert ledger.review(*KEY, "QA-0007", ReviewOutcome.CONFIRMED) is True
+        assert ledger.publish(*KEY) is True
+        assert ledger.entry(*KEY).publication_state is PublicationState.PUBLISHED

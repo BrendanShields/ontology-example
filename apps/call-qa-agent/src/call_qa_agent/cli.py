@@ -49,7 +49,7 @@ from .generated import (
     Scorecard,
     Utterance,
 )
-from .ledger import Corrupt, Entry, Ledger
+from .ledger import Corrupt, Entry, Ledger, is_identifier
 from .prompts import system_prompt
 from .replay import load_steps, replay
 from .tools import FINISH_EVALUATION, RECORD_FINDING, render_rejections, tool_definitions
@@ -108,7 +108,7 @@ def load_scorecard(path: Path) -> Scorecard:
 
 
 def _identifier(value: str) -> str:
-    if not value.strip() or any(character.isspace() for character in value):
+    if not is_identifier(value):
         raise argparse.ArgumentTypeError("an identifier has no spaces and is not empty")
     return value
 
