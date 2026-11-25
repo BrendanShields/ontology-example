@@ -12,6 +12,7 @@ dist/
 # evidence is recorded by a test run, provenance bundles are built from it in CI.
 work/evidence/
 prov/*.ttl
+prov/verify.json
 
 # What the Claude Code engine writes into a mod folder when it loads the mod:
 # the API types, and a tsconfig.json that extends them

@@ -180,28 +180,41 @@ def coverage(rows: list[TraceRow]) -> dict[str, int]:
 # --- scope -----------------------------------------------------------------------
 
 
-def changed_files(cfg: Config) -> set[str] | None:
-    """Files that differ from the base branch, plus untracked ones. None outside a git repo."""
+def _git(cfg: Config, *args: str) -> str | None:
+    done = subprocess.run(
+        ["git", "-C", str(cfg.root), *args], capture_output=True, text=True, check=False
+    )
+    return done.stdout if done.returncode == 0 else None
 
-    def git(*args: str) -> str | None:
-        done = subprocess.run(
-            ["git", "-C", str(cfg.root), *args], capture_output=True, text=True, check=False
-        )
-        return done.stdout if done.returncode == 0 else None
 
-    if git("rev-parse", "--is-inside-work-tree") is None:
-        return None
-    base = "HEAD"
+def base_commit(cfg: Config) -> str | None:
+    """Where this branch left the base branch. None when no base branch can be found."""
     for ref in dict.fromkeys((cfg.base_ref, "main", "master")):
-        merge_base = git("merge-base", "HEAD", ref)
+        merge_base = _git(cfg, "merge-base", "HEAD", ref)
         if merge_base:
-            base = merge_base.strip()
-            break
-    changed = git("diff", "--name-only", "--relative", base)
-    untracked = git("ls-files", "--others", "--exclude-standard")
-    if changed is None:  # a repository without commits yet: everything is new
-        changed = git("ls-files", "--cached") or ""
-    return {line for line in (changed + (untracked or "")).splitlines() if line}
+            return merge_base.strip()
+    return None
+
+
+def changed_files(cfg: Config) -> set[str] | None:
+    """Files that differ from the base branch, plus untracked ones. None when that is unknown.
+
+    Unknown means outside a git repository, or in one where no base branch
+    resolves (a shallow or single-branch clone). The caller then takes
+    everything: comparing with HEAD instead would call every commit unchanged.
+    """
+    if _git(cfg, "rev-parse", "--is-inside-work-tree") is None:
+        return None
+    untracked = _git(cfg, "ls-files", "--others", "--exclude-standard") or ""
+    if _git(cfg, "rev-parse", "--verify", "--quiet", "HEAD") is None:
+        # a repository without commits yet: everything is new
+        changed = _git(cfg, "ls-files", "--cached") or ""
+    else:
+        base = base_commit(cfg)
+        if base is None:
+            return None
+        changed = _git(cfg, "diff", "--name-only", "--relative", base) or ""
+    return {line for line in (changed + untracked).splitlines() if line}
 
 
 def branch_scope(ws: Workspace) -> set[str] | None:

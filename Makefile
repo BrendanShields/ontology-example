@@ -1,7 +1,7 @@
 # Everything here is a thin wrapper. The commands are the documentation.
 ONTO := bin/onto
 
-.PHONY: setup gen check test view lint mods vendored
+.PHONY: setup gen check verify test view lint mods vendored
 
 setup:            ## install the workspace into .venv
 	uv sync
@@ -17,6 +17,9 @@ check:            ## every gate CI runs, in the order CI runs them
 	uv run pytest --onto-evidence
 	$(ONTO) trace
 	uv run python tools/check_vendored.py
+
+verify:           ## the ontology gates again, leaving one index of what they showed
+	$(ONTO) verify
 
 test:             ## the tests alone
 	uv run pytest

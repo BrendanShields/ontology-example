@@ -27,6 +27,7 @@ class Context:
     pydantic: Path | None  # generated types
     json_schema: Path | None  # generated JSON Schema
     glossary_json: Path | None  # generated definitions, for apps that quote them at runtime
+    docs: Path | None = None  # generated page: diagram, terms, enums, mappings
 
 
 @dataclass(frozen=True)
@@ -45,6 +46,7 @@ class Config:
     protected: tuple[str, ...]
     on_open_ocr: str  # "ask" | "allow"
     contexts: dict[str, Context]
+    workflow_docs: Path | None = None  # generated page of the workflow ontology
 
     def rel(self, path: Path | str) -> str:
         """Repository-relative, forward-slashed form of a path (for messages and globs)."""
@@ -62,8 +64,10 @@ class Config:
             self.rel(self.workflow_json_schema): self.rel(self.workflow_schema),
             self.rel(self.workflow_shacl): self.rel(self.workflow_schema),
         }
+        if self.workflow_docs is not None:
+            out[self.rel(self.workflow_docs)] = self.rel(self.workflow_schema)
         for ctx in self.contexts.values():
-            for target in (ctx.pydantic, ctx.json_schema, ctx.glossary_json):
+            for target in (ctx.pydantic, ctx.json_schema, ctx.glossary_json, ctx.docs):
                 if target is not None:
                     out[self.rel(target)] = self.rel(ctx.schema)
         return out
@@ -124,6 +128,7 @@ def load_config(root: Path | None = None) -> Config:
             pydantic=root / body["pydantic"] if "pydantic" in body else None,
             json_schema=root / body["json_schema"] if "json_schema" in body else None,
             glossary_json=root / body["glossary_json"] if "glossary_json" in body else None,
+            docs=root / body["docs"] if "docs" in body else None,
         )
 
     on_open_ocr = guard.get("on_open_ocr", "ask")
@@ -146,6 +151,7 @@ def load_config(root: Path | None = None) -> Config:
         protected=tuple(guard.get("protected", ())),
         on_open_ocr=on_open_ocr,
         contexts=contexts,
+        workflow_docs=root / workflow["docs"] if "docs" in workflow else None,
     )
 
 

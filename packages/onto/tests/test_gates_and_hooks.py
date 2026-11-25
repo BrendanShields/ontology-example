@@ -182,6 +182,23 @@ def test_branch_scope_follows_the_trace_links(repo):
     assert {"REQ-0001", "REQ-0002"} <= gates.branch_scope(repo.ws())
 
 
+def test_a_branch_with_no_base_to_compare_with_is_answerable_for_everything(repo):
+    git = ["git", "-C", str(repo.root), "-c", "user.name=t", "-c", "user.email=t@example.com"]
+    git += ["-c", "commit.gpgsign=false"]
+    repo.item("REQ-0001", status="done")
+    subprocess.run([*git, "init", "-q", "-b", "work"], check=True)
+    # Before the first commit, everything is new.
+    assert "REQ-0001" in gates.branch_scope(repo.ws())
+
+    subprocess.run([*git, "add", "-A"], check=True)
+    subprocess.run([*git, "commit", "-q", "-m", "claim"], check=True)
+    # No origin/main, main or master: a committed claim must not drop out of scope.
+    assert gates.branch_scope(repo.ws()) is None
+
+    subprocess.run([*git, "branch", "main"], check=True)
+    assert gates.branch_scope(repo.ws()) == set()
+
+
 # --- evidence ----------------------------------------------------------------------
 
 
