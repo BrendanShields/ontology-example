@@ -15,9 +15,13 @@ def test_scorecard_is_loaded_exactly_when_every_criterion_id_is_its_own(tmp_path
     path = tmp_path / "scorecard.yaml"
     for count in range(1, len(NAMES) + 1):
         for names in itertools.product(NAMES, repeat=count):
-            criteria = [{"criterion_id": name, "statement": "A thing.", "weight": 1} for name in names]
+            criteria = [
+                {"criterion_id": name, "statement": "A thing.", "weight": 1} for name in names
+            ]
             path.write_text(
-                yaml.safe_dump({"scorecard_id": "example-v1", "pass_mark": 50, "criteria": criteria}),
+                yaml.safe_dump(
+                    {"scorecard_id": "example-v1", "pass_mark": 50, "criteria": criteria}
+                ),
                 encoding="utf-8",
             )
             try:

@@ -103,13 +103,17 @@ def test_trace_fails_on_a_branch_whose_only_change_is_the_ontology(repo, monkeyp
     code, out = run("trace", "--scope", "branch", monkeypatch=monkeypatch, capsys=capsys)
     assert code == 1 and changes.REQUESTED in out.out
 
-    code, out = run(*STOP, stdin={"hook_event_name": "Stop"}, monkeypatch=monkeypatch, capsys=capsys)
+    code, out = run(
+        *STOP, stdin={"hook_event_name": "Stop"}, monkeypatch=monkeypatch, capsys=capsys
+    )
     assert code == BLOCK and out.out == ""
     assert changes.REQUESTED in out.err and "onto ocr new" in out.err
     assert "take back the claim" not in out.err  # that advice is for a failed requirement
 
     repo.item("OCR-0002", status="in_progress")
-    code, out = run(*STOP, stdin={"hook_event_name": "Stop"}, monkeypatch=monkeypatch, capsys=capsys)
+    code, out = run(
+        *STOP, stdin={"hook_event_name": "Stop"}, monkeypatch=monkeypatch, capsys=capsys
+    )
     assert (code, out.out, out.err) == (0, "", "")
     code, out = run("trace", monkeypatch=monkeypatch, capsys=capsys)
     assert code == 0
@@ -130,7 +134,9 @@ def test_trace_fails_when_there_is_no_base_to_compare_the_branch_with(repo, monk
         assert "origin/main" in out.out and "base_ref" in out.out and "fetch-depth" in out.out
 
     # Nothing the agent can put right, so it does not hold the session.
-    code, out = run(*STOP, stdin={"hook_event_name": "Stop"}, monkeypatch=monkeypatch, capsys=capsys)
+    code, out = run(
+        *STOP, stdin={"hook_event_name": "Stop"}, monkeypatch=monkeypatch, capsys=capsys
+    )
     assert (code, out.err) == (0, "")
 
 
@@ -174,12 +180,16 @@ def test_the_stop_gate_catches_a_generated_file_changed_by_any_tool(repo, monkey
     target = repo.root / GENERATED
     target.write_text(target.read_text().replace('"superseded"', '"retired"'))
 
-    code, out = run(*STOP, stdin={"hook_event_name": "Stop"}, monkeypatch=monkeypatch, capsys=capsys)
+    code, out = run(
+        *STOP, stdin={"hook_event_name": "Stop"}, monkeypatch=monkeypatch, capsys=capsys
+    )
     assert code == BLOCK
     assert f"{GENERATED}: error[{changes.GENERATED}]" in out.err and "onto gen" in out.err
 
     git(repo, "checkout", "-q", "--", GENERATED)
-    code, out = run(*STOP, stdin={"hook_event_name": "Stop"}, monkeypatch=monkeypatch, capsys=capsys)
+    code, out = run(
+        *STOP, stdin={"hook_event_name": "Stop"}, monkeypatch=monkeypatch, capsys=capsys
+    )
     assert (code, out.err) == (0, "")
 
 
@@ -195,7 +205,9 @@ def test_the_stop_gate_catches_a_source_that_was_not_compiled(repo, monkeypatch,
     )
     repo.item("OCR-0002", status="in_progress")
 
-    code, out = run(*STOP, stdin={"hook_event_name": "Stop"}, monkeypatch=monkeypatch, capsys=capsys)
+    code, out = run(
+        *STOP, stdin={"hook_event_name": "Stop"}, monkeypatch=monkeypatch, capsys=capsys
+    )
     assert code == BLOCK and changes.GENERATED in out.err and "generated.py" in out.err
 
 
@@ -206,7 +218,9 @@ def test_the_stop_gate_says_which_source_a_shell_command_left_unparsable(
     path = repo.root / source
     path.write_text(path.read_text() + "x: y: z\n")
 
-    code, out = run(*STOP, stdin={"hook_event_name": "Stop"}, monkeypatch=monkeypatch, capsys=capsys)
+    code, out = run(
+        *STOP, stdin={"hook_event_name": "Stop"}, monkeypatch=monkeypatch, capsys=capsys
+    )
 
     # Exit 1 would not hold the session, and a traceback tells the agent nothing it can act on.
     assert code == BLOCK and "Traceback" not in out.err
@@ -227,7 +241,9 @@ def test_a_missing_generator_does_not_block_the_session(repo, monkeypatch, capsy
 
     monkeypatch.setattr(gen, "_require_linkml", unavailable)
     touch(repo, GENERATED)
-    code, out = run(*STOP, stdin={"hook_event_name": "Stop"}, monkeypatch=monkeypatch, capsys=capsys)
+    code, out = run(
+        *STOP, stdin={"hook_event_name": "Stop"}, monkeypatch=monkeypatch, capsys=capsys
+    )
     assert (code, out.err) == (0, "")
 
 

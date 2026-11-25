@@ -361,4 +361,3 @@ def test_settings_that_lack_a_derived_rule_fail_the_check(repo, capsys):
     assert main(check) == 1
     out = capsys.readouterr().out
     assert "Edit(/ontology/shapes/workflow.shacl.ttl)" in out and "onto guard --deny-rules" in out
-

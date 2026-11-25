@@ -45,7 +45,9 @@ _NEEDS_REVIEW = "needs_review = critical_failed or applied == 0"
 _ANSWERED = '        messages.append({"role": "user", "content": results})\n'
 _OUT_OF_TURNS = '    raise EvaluationIncomplete(\n        f"the model did not'
 
-_EVALUATION_RETURNED = _ANSWERED + "        if session.evaluation is not None:\n            return session.evaluation"
+_EVALUATION_RETURNED = (
+    _ANSWERED + "        if session.evaluation is not None:\n            return session.evaluation"
+)
 _CONCLUDED = "self.evaluation = scoring.conclude(self.call, self.scorecard, self.findings)"
 _UNCITED = "[f.model_copy(update={'cited_utterances': None}) for f in findings],"
 _RECITED = "model_copy(update={'cited_utterances': [2]})"
@@ -63,6 +65,8 @@ _REVIEW_KEPT_ANYWAY = (
 )
 _PUBLISHED_ALREADY = "            if found.publication_state is PublicationState.PUBLISHED:\n                return False"
 
+# One mutant to a line, so that the table reads as a table.
+# fmt: off
 MUTANTS = [
     Mutant("evaluation-loses-its-score", _SCORING, "score=points,", "score=0,", "scoring", "S1"),
     Mutant("critical-failure-can-pass", _SCORING, "passed = not critical_failed and points", "passed = points", "scoring", "S2"),
@@ -128,6 +132,7 @@ MUTANTS = [
     Mutant("published-twice-is-refused", _LEDGER, _PUBLISHED_ALREADY, "            if False:\n                return False", "ledger", "P12"),
     Mutant("another-evaluation-staged-over-the-first", _LEDGER, "evaluation, found.records if found else (), actor=SYSTEM", "evaluation, (), actor=SYSTEM", "ledger", "P13"),
 ]
+# fmt: on
 
 
 def copy_package(target: Path) -> Path:

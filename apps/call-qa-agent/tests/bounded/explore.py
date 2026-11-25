@@ -129,7 +129,9 @@ def criterion_ids(count: int) -> list[str]:
     return [f"c{index}" for index in range(count)]
 
 
-def make_scorecard(weights: Iterable[int], critical: Iterable[bool], pass_mark: int = 50) -> Scorecard:
+def make_scorecard(
+    weights: Iterable[int], critical: Iterable[bool], pass_mark: int = 50
+) -> Scorecard:
     return Scorecard(
         scorecard_id="bounded-v1",
         pass_mark=pass_mark,
@@ -257,7 +259,12 @@ def proposals(count: int) -> list[tuple[str, object]]:
                 if cited is not None:
                     proposal["cited_utterances"] = cited
                 out.append((f"{criterion} {outcome} cites {cited}", proposal))
-    well_formed = {"criterion": "c0", "finding_outcome": MET, "cited_utterances": [1], "rationale": "r"}
+    well_formed = {
+        "criterion": "c0",
+        "finding_outcome": MET,
+        "cited_utterances": [1],
+        "rationale": "r",
+    }
     out += [
         ("an empty object", {}),
         ("a string", "text"),

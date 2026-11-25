@@ -60,7 +60,9 @@ def _observed(step) -> tuple[str, bool]:
     if step.rejected and rules is None:
         return "call after completion refused", False
     if step.tool == RECORD_FINDING:
-        return (f"Finding rejected ({rules})", False) if step.rejected else ("Finding recorded", True)
+        return (
+            (f"Finding rejected ({rules})", False) if step.rejected else ("Finding recorded", True)
+        )
     return (f"finish refused ({rules})" if step.rejected else "finish accepted"), False
 
 
