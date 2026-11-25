@@ -63,9 +63,9 @@ uv run onto init \
 
 | Option | Meaning | Default |
 | --- | --- | --- |
-| `--context NAME` | The bounded context to start a glossary for. Lower case, digits, `-` or `_`. | `app` |
-| `--domain-path GLOB` | The domain layer of that context. Vocabulary is enforced there. The generated types go in the folder above it. | `src/<context>/domain/**` |
-| `--base-uri URI` | The namespace of your ontologies and work items. | `https://example.org` |
+| `--context NAME` | The bounded context to start a glossary for. Lower case, digits, `-` or `_`. Not `linkml`. | `app` |
+| `--domain-path GLOB` | The domain layer of that context, as a glob from the repository root. Vocabulary is enforced there. The generated types go in the folder above it. A folder without a glob gets `/**` added, and a leading `./` is dropped. | `src/<context>/domain/**` |
+| `--base-uri URI` | The namespace of your ontologies and work items. An http or https URI without spaces, quotes or angle brackets. | `https://example.org` |
 | `--onto-cmd COMMAND` | How hooks, make and CI run onto. | `uv run onto` |
 | `--no-claude` | Leave out the Claude Code layer. | off |
 | `--no-ci` | Leave out the CI workflow. | off |
@@ -107,8 +107,8 @@ the competency questions and the glossary. It does not have to resolve.
 
 - `.gitignore`: missing lines are appended.
 - `Makefile`: `include onto.mk` is appended. The targets start with `onto-`, so they do not replace yours.
-- `.claude/settings.json`: the permission and the hook groups are added to yours. If the file is not plain JSON, or its `permissions.allow` or `hooks` have an unexpected shape, yours is left alone and `.claude/settings.onto.json` is written beside it.
-- `CLAUDE.md`: if you have one, the section is written to `CLAUDE.onto.md`. Copy it in and delete that file.
+- `.claude/settings.json`: the permission rules and the hook groups are added to yours. A rule that denies editing a generated file is written once for each file your `onto.toml` names, and for `work/evidence/**`. If the file is not plain JSON, or a list under `permissions` or `hooks` has an unexpected shape, yours is left alone and `.claude/settings.onto.json` is written beside it. If that file exists too, it is left alone and reported as `exists`.
+- `CLAUDE.md`: if you have one, the section is written to `CLAUDE.onto.md`, unless that file exists too. Copy it in and delete that file.
 - A file where `onto gen` would write, such as an existing `src/loans/generated.py`: `onto init` stops before generating and names the file. Point `pydantic`, `json_schema` or `glossary_json` somewhere else in `onto.toml`, then run `onto gen`.
 
 Running `onto init` again with the same options is safe. It writes what is
@@ -143,6 +143,11 @@ and without an activated environment.
 | `.github/workflows/ontology-gates.yml` | The `ONTO` variable under `env`. |
 
 To change the command later, edit those places. `onto init` does not rewrite them.
+
+The CI workflow runs `$ONTO <subcommand>`, and the shell does not read quotes
+inside a variable. A command that needs quoting, such as a path with a space,
+works in the hooks and in make and fails in CI. Use a command without quotes,
+or write it into each `run:` line of the workflow.
 
 ## Add your first glossary term
 
@@ -294,10 +299,10 @@ default branch:
 | Generated files and evidence are not edited by hand. Ontology sources change only under a request in progress. | `onto guard` | before each Edit or Write | no |
 | An edited work item is valid. An edited domain file uses no denied synonym. | `onto check-terms --changed-from-stdin` | after each Edit or Write | no |
 | Every work item and glossary is valid. | `onto validate` | no | yes |
-| Every domain layer uses glossary vocabulary. | `onto check-terms` | no | yes |
+| Every domain layer uses glossary vocabulary. A context that has code and whose `domain_paths` match no file gets a warning. | `onto check-terms` | no | yes |
 | Generated files match the ontology. | `onto gen --check` | no | yes |
 | A Requirement claimed done has a Test with passing evidence, and the other graph gates hold. | `onto trace` | when the agent stops, for what the branch touched | yes, for everything |
-| The gates and questions use the namespaces of the workflow ontology. | `onto trace` | when the agent stops | yes |
+| Each gate file and each question declares the namespace of the workflow ontology, and no other namespace in its place. | `onto trace` | when the agent stops, also on a branch that touched no work item | yes |
 | Questions that expect no rows return none. | `onto cq --check` | no | not in the scaffolded workflow: add it if you want it |
 
 The hooks run only in Claude Code sessions, and a person can edit any file
@@ -316,7 +321,8 @@ outside one. CI and the CODEOWNERS review are the controls.
   files only, and is a warning.
 - **`onto init` scaffolds one bounded context.** Add another by hand: a
   `[contexts.<name>]` table in `onto.toml` and a glossary under
-  `ontology/domains/`.
+  `ontology/domains/`. If `.claude/settings.json` denies edits to generated
+  files, add the rules for the new context's files by hand too.
 - **There is no upgrade command.** `onto init` writes missing files and never
   updates one. To take a newer workflow ontology, gate or skill, compare your
   copy with the templates of the newer onto and carry the changes across.

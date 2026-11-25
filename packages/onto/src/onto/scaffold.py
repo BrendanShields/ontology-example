@@ -30,6 +30,9 @@ ONTO_CMD = "{{onto_cmd}}"
 # repository's command has to work from any folder inside it, so it is rendered the same.
 ONTO_ANCHORED = "{{onto_anchored}}"
 BASE_URI = "{{base_uri}}"
+# In a permission rule of the settings template: each file nobody edits by hand.
+# Which files those are is a fact of the adopting repository's onto.toml.
+GENERATED = "{{generated}}"
 
 # Template folders have plain names, so that no packaging tool drops them.
 HIDDEN = {"claude": ".claude"}
@@ -219,8 +222,8 @@ def scaffold(options: Options) -> list[Step]:
             render(static["ontology-gates.yml"], tokens),
         )
     if options.claude:
-        ours = json.loads(synced[SETTINGS])
-        steps.append(_settings(root, _replace_in_strings(ours, ONTO_CMD, options.onto_cmd)))
+        ours = _replace_in_strings(json.loads(synced[SETTINGS]), ONTO_CMD, options.onto_cmd)
+        steps.append(_settings(root, expand_generated(ours, never_edited(cfg))))
         steps.append(_claude_md(root, render(static["CLAUDE.md"], tokens)))
     return steps
 
@@ -276,6 +279,29 @@ def _replace_in_strings(value, old: str, new: str):
     return value
 
 
+def never_edited(cfg) -> list[str]:
+    """What `onto gen` and a test run write, as permission-rule paths from the repository root."""
+    from .gen import targets
+
+    generated = {cfg.rel(target.path) for target in targets(cfg)}
+    return [f"/{path}" for path in sorted(generated | {f"{cfg.rel(cfg.evidence_dir)}/**"})]
+
+
+def expand_generated(settings: dict, paths: list[str]) -> dict:
+    """The settings with each permission rule on GENERATED repeated for every path."""
+    expanded = copy.deepcopy(settings)
+    permissions = expanded.get("permissions", {})
+    for kind, rules in permissions.items():
+        permissions[kind] = [
+            each
+            for rule in rules
+            for each in (
+                [rule.replace(GENERATED, p) for p in paths] if GENERATED in rule else [rule]
+            )
+        ]
+    return expanded
+
+
 class Unmergeable(Exception):
     """The settings file is not shaped in a way that can be added to safely."""
 
@@ -288,10 +314,11 @@ def merge_settings(theirs: dict, ours: dict) -> dict:
     for key, value in ours.items():
         if key == "permissions":
             permissions = merged.setdefault("permissions", {})
-            allow = permissions.setdefault("allow", []) if isinstance(permissions, dict) else None
-            if not isinstance(allow, list):
-                raise Unmergeable("`permissions.allow` is not a list")
-            allow.extend(entry for entry in value.get("allow", []) if entry not in allow)
+            for kind, rules in value.items():
+                present = permissions.setdefault(kind, []) if isinstance(permissions, dict) else 0
+                if not isinstance(present, list):
+                    raise Unmergeable(f"`permissions.{kind}` is not a list")
+                present.extend(rule for rule in rules if rule not in present)
         elif key == "hooks":
             hooks = merged.setdefault("hooks", {})
             if not isinstance(hooks, dict):

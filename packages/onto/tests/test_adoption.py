@@ -255,6 +255,37 @@ def test_an_existing_claude_md_is_kept_and_the_section_is_written_beside_it(tmp_
     assert "/ostack-mode" in (tmp_path / "CLAUDE.onto.md").read_text(encoding="utf-8")
 
 
+def test_the_files_nobody_edits_are_denied_as_the_adopting_repository_names_them(
+    tmp_path, monkeypatch
+):
+    packaged = scaffold.templates
+
+    def denying(folder: str) -> dict[str, bytes]:
+        tree = dict(packaged(folder))
+        if folder == "synced":
+            settings = json.loads(tree[scaffold.SETTINGS])
+            settings["permissions"]["deny"] = [f"Edit({scaffold.GENERATED})"]
+            tree[scaffold.SETTINGS] = json.dumps(settings).encode()
+        return tree
+
+    monkeypatch.setattr(scaffold, "templates", denying)
+    (tmp_path / ".claude").mkdir()
+    (tmp_path / ".claude/settings.json").write_text(json.dumps(THEIR_SETTINGS), encoding="utf-8")
+
+    scaffold.scaffold(options(tmp_path))
+
+    settings = json.loads((tmp_path / ".claude/settings.json").read_text(encoding="utf-8"))
+    assert settings["permissions"]["deny"] == [
+        "Bash(rm *)",
+        "Edit(/ontology/schemas/workflow.schema.json)",
+        "Edit(/ontology/shapes/workflow.shacl.ttl)",
+        "Edit(/src/loans/generated.py)",
+        "Edit(/src/loans/schemas/loans.glossary.json)",
+        "Edit(/src/loans/schemas/loans.schema.json)",
+        "Edit(/work/evidence/**)",
+    ]
+
+
 def test_a_file_already_beside_the_one_that_could_not_be_merged_is_kept_too(tmp_path):
     (tmp_path / ".claude").mkdir()
     (tmp_path / ".claude/settings.json").write_text("// comments\n{}", encoding="utf-8")
@@ -297,7 +328,9 @@ def test_options_that_would_scaffold_something_broken_are_refused(tmp_path, bad)
     assert not any(tmp_path.iterdir())
 
 
-@pytest.mark.parametrize("given", ["src/loans/domain", "./src/loans/domain/**", "src/loans/domain/"])
+@pytest.mark.parametrize(
+    "given", ["src/loans/domain", "./src/loans/domain/**", "src/loans/domain/"]
+)
 def test_a_domain_path_written_loosely_still_puts_the_layer_under_the_vocabulary_gate(
     tmp_path, given
 ):

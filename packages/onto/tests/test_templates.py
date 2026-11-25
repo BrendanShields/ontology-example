@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import shutil
 from pathlib import Path
 
@@ -93,3 +94,41 @@ def test_a_skill_that_names_this_repositorys_app_is_not_shipped_in_silence(sync,
 
 def test_this_repositorys_contexts_and_app_paths_are_the_local_words(sync):
     assert {"call-qa", "apps/call-qa-agent"} <= set(sync.local_words())
+
+
+# The shape .claude/settings.json takes once it denies edits to this repository's generated files.
+DENYING = {
+    "permissions": {
+        "allow": ["Bash(bin/onto *)"],
+        "deny": [
+            "Edit(/apps/call-qa-agent/src/call_qa_agent/generated.py)",
+            "Edit(/apps/call-qa-agent/src/call_qa_agent/schemas/call-qa.glossary.json)",
+            "Edit(/apps/call-qa-agent/src/call_qa_agent/schemas/call-qa.schema.json)",
+            "Edit(/ontology/schemas/workflow.schema.json)",
+            "Edit(/ontology/shapes/workflow.shacl.ttl)",
+            "Edit(/work/evidence/**)",
+            "Read(/.env)",
+        ],
+    }
+}
+
+
+def test_a_rule_on_this_repositorys_generated_files_is_not_copied_to_an_adopter(sync):
+    template = sync.settings_template(json.dumps(DENYING))
+
+    assert json.loads(template)["permissions"]["deny"] == [
+        f"Edit({scaffold.GENERATED})",
+        "Read(/.env)",
+    ]
+    assert sync.local_problems(sync.SETTINGS, template.decode(), sync.local_words()) == []
+    assert sync.restored_permissions(template)["deny"] == DENYING["permissions"]["deny"]
+
+
+def test_a_settings_file_that_names_this_repositorys_app_is_not_shipped_in_silence(
+    sync, monkeypatch
+):
+    monkeypatch.setattr(sync, "local_words", lambda: ["Edit|Write"])
+
+    _, problems = sync.build()
+
+    assert any(p.startswith(".claude/settings.json: names 'Edit|Write'") for p in problems)

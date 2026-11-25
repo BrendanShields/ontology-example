@@ -103,7 +103,25 @@ def settings_template(text: str) -> bytes:
             return {key: generalise(entry) for key, entry in value.items()}
         return value
 
-    return (json.dumps(generalise(json.loads(text)), indent=2) + "\n").encode()
+    settings = generalise(json.loads(text))
+    # A rule on a generated file of this repository becomes a rule on GENERATED, which
+    # `onto init` repeats for the files the adopting repository's onto.toml names.
+    here = scaffold.never_edited(load_config(ROOT))
+    permissions = settings.get("permissions", {})
+    for kind, rules in permissions.items():
+        for path in here:
+            rules = [rule.replace(f"({path})", f"({scaffold.GENERATED})") for rule in rules]
+        permissions[kind] = list(dict.fromkeys(rules))
+    return (json.dumps(settings, indent=2) + "\n").encode()
+
+
+def local_problems(rel: str, text: str, local: list[str]) -> list[str]:
+    return [
+        f"{rel}: names '{word}', which an adopting repository does not have. "
+        "Generalise the source, or add the file to EXCLUDE in tools/sync_templates.py."
+        for word in local
+        if word in text
+    ]
 
 
 def local_words() -> list[str]:
@@ -125,6 +143,7 @@ def build() -> tuple[dict[str, bytes], list[str]]:
         data = (ROOT / rel).read_bytes()
         if rel == SETTINGS:
             data = settings_template(data.decode())
+            problems += local_problems(rel, data.decode(), local)
         elif not rel.startswith(VERBATIM):
             text = data.decode()
             problems += [
@@ -132,12 +151,7 @@ def build() -> tuple[dict[str, bytes], list[str]]:
                 for token in PLACEHOLDERS.values()
                 if token in text
             ]
-            problems += [
-                f"{rel}: names '{word}', which an adopting repository does not have. "
-                "Generalise the source, or add the file to EXCLUDE in tools/sync_templates.py."
-                for word in local
-                if word in text
-            ]
+            problems += local_problems(rel, text, local)
             for here, placeholder in {base: scaffold.BASE_URI, **PLACEHOLDERS}.items():
                 text = text.replace(here, placeholder)
             data = text.encode()
@@ -158,6 +172,12 @@ def restore(tree: dict[str, bytes]) -> dict[str, bytes]:
     values = {placeholder: here for here, placeholder in PLACEHOLDERS.items()}
     values[scaffold.BASE_URI] = base_uri()
     return {rel: scaffold.render(data, values) for rel, data in tree.items()}
+
+
+def restored_permissions(template: bytes) -> dict:
+    """The permission rules `onto init` would derive for this repository."""
+    here = scaffold.never_edited(load_config(ROOT))
+    return scaffold.expand_generated(json.loads(template), here).get("permissions", {})
 
 
 def differences(tree: dict[str, bytes]) -> list[str]:
