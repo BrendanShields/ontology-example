@@ -606,3 +606,35 @@ def test_a_path_list_that_would_send_the_scan_astray_is_a_config_error(
         assert main(command) == 1
         message = capsys.readouterr().err
         assert f"[contexts.shop] {key}" in message and reason in message
+
+
+# --- a scratch repository for a gate that reads proof --------------------------------
+
+
+def test_a_scratch_copy_can_be_made_of_a_glossary_that_binds_no_rule(tmp_path, monkeypatch, capsys):
+    """What proves a bound rule is a done Requirement, and a scratch repository has none."""
+    pytest.importorskip("linkml")
+    for folder in ("bound", "plain", "again"):
+        (tmp_path / folder).mkdir()
+    as_it_is = scratch_repo(tmp_path / "bound")
+    monkeypatch.setenv("ONTO_ROOT", str(as_it_is.root))
+    assert main(["rules"]) == 1
+    assert "error[unproven-rule]" in capsys.readouterr().out
+
+    plain = scratch_repo(tmp_path / "plain", bind_rules=False)
+    monkeypatch.setenv("ONTO_ROOT", str(plain.root))
+    plain.item("REQ-0001", status="done")
+    plain.item("TST-0001")
+    plain.item("EVD-0001")
+
+    assert plain.term == as_it_is.term  # the same glossary in every other respect
+    assert main(["rules"]) == 0
+    assert "no term declares a binding" in capsys.readouterr().out
+    for held in (["gen", "--check"], ["validate"], ["check-terms"], ["trace"]):
+        assert main(held) == 0, capsys.readouterr().out
+    cfg = load_config(plain.root)
+    assert not any(c.bindings_json and c.bindings_json.exists() for c in cfg.contexts.values())
+    # A copy of that copy binds nothing either, and needs no second regeneration.
+    again = scratch_repo(tmp_path / "again", plain.root)
+    monkeypatch.setenv("ONTO_ROOT", str(again.root))
+    assert main(["rules"]) == 0

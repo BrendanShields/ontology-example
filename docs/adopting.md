@@ -419,3 +419,8 @@ outside one. CI and the CODEOWNERS review are the controls.
   `packages/onto/tests/test_gates.py`. In your repository, write that test
   with `onto.testing.scratch_repo`, which copies your ontology layer into a
   temporary folder.
+- **A scratch copy has no proof of your rules.** Once your glossary binds a
+  rule, `onto rules` and `onto verify` fail in a plain scratch copy, because
+  the Requirement that proves the rule is not in it. For a test that is not
+  about those rules, use `scratch_repo(tmp_path, bind_rules=False)`: the same
+  glossary with no term bound. It runs `onto gen`, so it needs `onto-cli[gen]`.

@@ -9,6 +9,12 @@ The scratch repository has the onto.toml and ontology/ of the repository the tes
 run in and an empty work/.
 `item` fills in every required field of the class with something valid, so a
 test states only what it is about.
+
+A glossary that binds rules makes `onto rules` and `onto verify` ask for a done
+Requirement that proves each one, and a scratch repository starts with none.
+A test that is not about those rules starts from a copy that binds nothing:
+
+    repo = scratch_repo(tmp_path, bind_rules=False)
 """
 
 from __future__ import annotations
@@ -25,6 +31,7 @@ from .rules import scanned_files
 from .workspace import Workspace
 
 TEST_PATH = "tests/test_example.py::test_example"
+BINDING_KEYS = ("binding", "precondition_of")  # the annotations that bind a term to code
 
 
 def _defaults(context: str, term: str) -> dict[str, dict]:
@@ -117,12 +124,16 @@ def scratch_repo(
     *,
     context: str | None = None,
     term: str | None = None,
+    bind_rules: bool = True,
 ) -> Scratch:
     """Copy the ontology layer of a repository into tmp_path.
 
     `source` is the repository to copy: by default the one the tests run in.
     The default items belong to `context` (by default the first in onto.toml)
     and are about `term` (by default its first class that is not classified).
+    With `bind_rules=False` the copied glossaries keep every term and bind none
+    of them, and the generated files are written again to match. That takes
+    `onto gen`, so make such a copy once and pass it as `source` to the rest.
     """
     source = source or find_root()
     root = tmp_path / "repo"
@@ -151,7 +162,40 @@ def scratch_repo(
                 shutil.copy(source / rel, root / rel)
     (root / "work").mkdir(exist_ok=True)
     scratch.write(TEST_PATH.split("::")[0], "def test_example():\n    assert True\n")
+    if not bind_rules:
+        _withdraw_bindings(root)
     return scratch
+
+
+def _withdraw_bindings(root: Path) -> None:
+    """Rewrite each glossary under root with no term bound, and regenerate from it."""
+    import yaml
+
+    from . import gen
+    from .config import load_config
+
+    def strip(node) -> None:
+        if isinstance(node, dict):
+            annotations = node.get("annotations")
+            if isinstance(annotations, dict):
+                for key in BINDING_KEYS:
+                    annotations.pop(key, None)
+                if not annotations:
+                    del node["annotations"]
+            for value in node.values():
+                strip(value)
+        elif isinstance(node, list):
+            for value in node:
+                strip(value)
+
+    cfg = load_config(root)
+    for context in cfg.contexts.values():
+        glossary = yaml.safe_load(context.schema.read_text(encoding="utf-8"))
+        strip(glossary)
+        context.schema.write_text(yaml.safe_dump(glossary, sort_keys=False), encoding="utf-8")
+        if context.bindings_json is not None:
+            context.bindings_json.unlink(missing_ok=True)
+    gen.generate(cfg)
 
 
 def _plain_term(workspace: Workspace, context: str) -> str:
