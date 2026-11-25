@@ -248,6 +248,15 @@ ELSEWHERE = "<http://192.0.2.1:9/sparql>"
         f"SELECT ?s WHERE {{ service silent {ELSEWHERE} {{ ?s ?p ?o }} }}",
         f"SELECT ?s WHERE {{ ?s ?p ?o\nSERVICE{ELSEWHERE} {{ ?s ?p ?o }} }}",
         f"SELECT ?s WHERE {{ ?s ?p 'no # comment' . SERVICE {ELSEWHERE} {{ ?s ?p ?o }} }}",
+        # Each of these hides the clause from a reader that strips IRIs, strings and comments.
+        f"SELECT * WHERE {{ VALUES ?e {{ {ELSEWHERE} }} FILTER(1<2)SERVICE?e{{?s?p?o}}FILTER(2>1) }}",
+        "SELECT * WHERE { FILTER(1<2)SERVICE?e#>\n{ ?s ?p ?o } }",
+        f"{WF}SELECT * WHERE {{ ?s wf:a\\#b ?o . SERVICE {ELSEWHERE} {{ ?s ?p ?o }} }}",
+        f"SELECT * WHERE {{ SERV\\u0049CE {ELSEWHERE} {{ ?s ?p ?o }} }}",
+        f"SELECT * WHERE {{ \\U00000053ERVICE {ELSEWHERE} {{ ?s ?p ?o }} }}",
+        f"SELECT * WHERE {{ ?s ?p 1SERVICE{ELSEWHERE}{{ ?s ?p ?o }} }}",
+        f"# a comment\rSELECT * WHERE {{ SERVICE {ELSEWHERE} {{ ?s ?p ?o }} }}",
+        f"PREFIX wf: <x> # <\nSELECT * WHERE {{ SERVICE {ELSEWHERE} {{ ?s ?p ?o }} }} # >",
     ],
 )
 def test_a_query_that_would_call_another_host_is_refused(query):
@@ -255,15 +264,19 @@ def test_a_query_that_would_call_another_host_is_refused(query):
         load_graph().select(query)
 
 
-def test_the_word_service_outside_the_query_s_code_is_not_a_service_clause():
+def test_the_word_service_before_the_query_form_is_not_a_service_clause():
     rows = load_graph().select(
         "# which service does this task serve?\n"
+        "BASE <https://services.example/>\n"
         "PREFIX service: <https://bank.example/ontology/workflow/>\n"
-        "SELECT ?task ?service ?label WHERE { ?task service:implements ?service . "
-        "BIND('SERVICE <x>' AS ?label) } ORDER BY ?service",
+        "PREFIX wf: <https://bank.example/ontology/workflow/>\n"
+        "SELECT ?task ?req WHERE { ?task wf:implements ?req }",
         task="TASK-0003",
     )
-    assert rows == [{"task": "TASK-0003", "service": "REQ-0007", "label": "SERVICE <x>"}]
+    assert rows == [{"task": "TASK-0003", "req": "REQ-0007"}]
+    # Past the prologue the word is refused wherever it stands: no second reading of the grammar.
+    with pytest.raises(ValueError, match="rename what carries it"):
+        load_graph().select(WF + "SELECT ?service WHERE { ?task wf:implements ?service }")
 
 
 @pytest.mark.parametrize("form", ["CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }", "DESCRIBE ?s"])

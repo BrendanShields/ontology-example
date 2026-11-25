@@ -394,7 +394,9 @@ def test_the_manifest_says_which_function_produces_each_bound_term(repo):
         "preconditions": {"Step.PLACE_ORDER": ["RefusalRule.EMPTY_ORDER"]},
     }
     assert generate(repo, check=True)[MANIFEST] == "unchanged"
-    assert guard.decide(repo.ws(), MANIFEST)[0] == guard.DENY
+    decision, reason = guard.decide(repo.ws(), MANIFEST)
+    assert decision == guard.DENY and "the functions it binds" in reason
+    assert "OntologyChangeRequest" not in reason  # a function that moved needs none
 
 
 def test_the_manifest_holds_nothing_that_a_test_run_decides(repo):

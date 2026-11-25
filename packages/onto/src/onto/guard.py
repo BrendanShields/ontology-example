@@ -23,6 +23,12 @@ def decide(ws: Workspace, path: str) -> tuple[str, str]:
     rel = cfg.rel(path)
 
     generated = cfg.generated_files()
+    manifests = {cfg.rel(c.bindings_json) for c in cfg.contexts.values() if c.bindings_json}
+    if rel in manifests:
+        return DENY, (
+            f"{rel} is generated from {generated[rel]} and the functions it binds. "
+            "Run `onto gen` to bring it up to date."
+        )
     if rel in generated:
         return DENY, (
             f"{rel} is generated from {generated[rel]}. Change {generated[rel]} "

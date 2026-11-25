@@ -726,8 +726,8 @@ def _parser() -> argparse.ArgumentParser:
 
     p = command("rules", _rules, "hold each bound rule to the code and the proof behind it")
     p.add_argument("--context")
-    p.add_argument("--json", action="store_const", const="json", dest="format")
     fmt(p, "text", "json")
+    p.add_argument("--json", action="store_const", const="json", dest="format", help="as JSON")
 
     evidence = sub.add_parser("evidence", help="record what the tests show")
     evidence_sub = evidence.add_subparsers(metavar="command", required=True)
