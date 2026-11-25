@@ -3,7 +3,9 @@
 Each ontology/cq/*.rq file starts with a comment header:
 
     # CQ-03: Which decisions about a term are still in force?
-    # bind: term          <- variables the caller supplies (optional)
+    # bind: term          <- variables the caller supplies (optional). Each is a work
+    #                        item id, a term or a CURIE, or `name (text)` for a plain
+    #                        string such as a path
     # expect: none        <- any row is a problem (optional)
 
 `onto cq` runs them from the command line; ontology/cq/test_competency_questions.py
@@ -22,6 +24,7 @@ from .graph import WorkGraph
 
 _TITLE = re.compile(r"^#\s*(CQ-\d+)\s*:\s*(.+)$")
 _FIELD = re.compile(r"^#\s*(bind|expect)\s*:\s*(.*)$", re.I)
+_BIND = re.compile(r"^(\w+)\s*(\(text\))?$", re.I)
 
 
 @dataclass(frozen=True)
@@ -32,6 +35,7 @@ class Question:
     sparql: str
     binds: tuple[str, ...] = ()
     expect_none: bool = False
+    text_binds: frozenset[str] = frozenset()  # the binds given as plain strings, not nodes
 
 
 def load(cfg: Config) -> dict[str, Question]:
@@ -39,7 +43,7 @@ def load(cfg: Config) -> dict[str, Question]:
     for path in sorted(cfg.cq_dir.glob("*.rq")):
         text = path.read_text(encoding="utf-8")
         identifier = "-".join(path.stem.split("-")[:2])
-        question, binds, expect_none = path.stem, (), False
+        question, binds, expect_none, text_binds = path.stem, (), False, frozenset()
         for line in text.splitlines():
             if not line.startswith("#"):
                 break
@@ -48,10 +52,14 @@ def load(cfg: Config) -> dict[str, Question]:
             elif found := _FIELD.match(line):
                 key, value = found.group(1).lower(), found.group(2).strip()
                 if key == "bind":
-                    binds = tuple(v.strip() for v in value.split(",") if v.strip())
+                    declared = [m for v in value.split(",") if (m := _BIND.match(v.strip()))]
+                    binds = tuple(m.group(1) for m in declared)
+                    text_binds = frozenset(m.group(1) for m in declared if m.group(2))
                 else:
                     expect_none = value.lower() == "none"
-        questions[identifier] = Question(identifier, question, path, text, binds, expect_none)
+        questions[identifier] = Question(
+            identifier, question, path, text, binds, expect_none, text_binds
+        )
     return questions
 
 
@@ -59,7 +67,8 @@ def run(graph: WorkGraph, question: Question, **bindings: str) -> list[dict[str,
     missing = [name for name in question.binds if name not in bindings]
     if missing:
         raise ValueError(f"{question.id} needs a value for: {', '.join(missing)}")
-    return graph.select(question.sparql, **bindings)
+    text = {name: bindings.pop(name) for name in question.text_binds if name in bindings}
+    return graph.select(question.sparql, text, **bindings)
 
 
 def table(rows: list[dict[str, str]]) -> str:

@@ -1,0 +1,25 @@
+# CQ-10: Which Decisions in force affect a path?
+# bind: path (text)
+#
+# In force as in CQ-03. A Decision names the files it constrains as globs in
+# `affects`: `**` crosses directories, `*` and `?` do not. The glob is turned
+# into a regular expression here the way `onto slice` reads it, and a test
+# holds the two readings together. The first REPLACE writes a backslash before
+# each character a regular expression would read as its own, in the form
+# Oxigraph takes a replacement in.
+PREFIX wf:   <https://bank.example/ontology/workflow/>
+PREFIX prov: <http://www.w3.org/ns/prov#>
+
+SELECT ?path ?decision ?glob ?title WHERE {
+  ?decision a wf:Decision ; wf:affects ?glob ; wf:title ?title ; wf:status "done" .
+  FILTER NOT EXISTS {
+    ?later prov:wasRevisionOf ?decision ; wf:status ?decided .
+    FILTER (?decided IN ("done", "superseded"))
+  }
+  BIND (REPLACE(STR(?glob), "([.+^$(){}|\\[\\]\\\\])", "\\$1") AS ?escaped)
+  BIND (REPLACE(REPLACE(?escaped, "\\*\\*/", "<dirs>"), "\\*\\*", "<any>") AS ?marked)
+  BIND (REPLACE(REPLACE(?marked, "\\*", "[^/]*"), "\\?", "[^/]") AS ?within)
+  BIND (REPLACE(REPLACE(?within, "<dirs>", "(.*/)?"), "<any>", ".*") AS ?pattern)
+  FILTER REGEX(?path, CONCAT("^", ?pattern, "$"))
+}
+ORDER BY ?decision ?glob
