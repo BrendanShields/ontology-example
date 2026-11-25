@@ -10,6 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from . import frontmatter
+from .guard import APPROVED
 from .report import ERROR, Violation, errors
 from .workitems import validate_item
 from .workspace import WorkItem, Workspace
@@ -59,6 +60,17 @@ def draft(
                 f"'{cls}' is not a class of work item",
                 found=cls,
                 allowed=classes,
+            )
+        ]
+
+    if cls == "OntologyChangeRequest" and fields.get("status") in APPROVED:
+        return None, [
+            Violation(
+                "approval",
+                ERROR,
+                f"a person approves an OntologyChangeRequest: it is not created {fields['status']}",
+                found=fields["status"],
+                fix="create it as a draft and have a person set its status",
             )
         ]
 

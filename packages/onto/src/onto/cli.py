@@ -242,13 +242,13 @@ def _check_terms(args) -> int:
 
 def _check_terms_hook(ws, event: dict) -> int:
     """PostToolUse: check the file an Edit or Write just touched."""
-    from . import hooks, terms
+    from . import hooks, paths, terms
     from .workitems import validate
 
     file = hooks.edited_file(event)
     if not file:
         return 0
-    rel = ws.cfg.rel(file)
+    rel = ws.cfg.rel(paths.stored(ws.cfg.root / file))
     text = _read(ws.cfg.root / rel)
     if text is None:
         return 0
@@ -276,10 +276,13 @@ def _guard(args) -> int:
     from . import guard, hooks
 
     ws = _workspace()
-    file = args.path or hooks.edited_file(hooks.read_event())
+    if args.deny_rules or args.check_settings:
+        return _deny_rules(ws.cfg, check=args.check_settings)
+    event = {} if args.path else hooks.read_event()
+    file = args.path or hooks.edited_file(event)
     if not file:
         return 0
-    decision, reason = guard.decide(ws, file)
+    decision, reason = guard.decide(ws, file, event.get("tool_input"))
     if args.path:  # asked by hand: just say what would happen
         print(f"{decision}: {reason}" if reason else decision)
         return 0
@@ -289,6 +292,18 @@ def _guard(args) -> int:
     if decision == guard.ASK:
         print(hooks.permission_decision("ask", reason))
     return 0
+
+
+def _deny_rules(cfg, *, check: bool) -> int:
+    from . import denyrules
+
+    if not check:
+        print(denyrules.render(cfg))
+        return 0
+    problems = denyrules.missing(cfg)
+    _emit(problems, "text")
+    print(f"onto guard --check-settings: {report.summary(problems)}")
+    return 1 if problems else 0
 
 
 # --- the graph -------------------------------------------------------------------
@@ -374,21 +389,22 @@ def _cq(args) -> int:
     return 1 if failed else 0
 
 
-def _scope(ws, name: str):
+def _scope(ws, name: str, *, stop: bool = False):
     from .gates import branch_scope
 
-    return None if name == "all" else branch_scope(ws)
+    return None if name == "all" else branch_scope(ws, or_uncommitted=stop)
 
 
 def _trace(args) -> int:
-    from . import evidence, gates, hooks
+    from . import changes, evidence, gates, hooks
     from .graph import build_graph
 
     ws = _workspace()
     stop = args.gate == "stop"
     event = hooks.read_event() if stop else {}
-    scope = _scope(ws, args.scope)
-    if scope is not None and not scope:
+    scope = _scope(ws, args.scope, stop=stop)
+    branch_problems = changes.branch_problems(ws, stop=stop)
+    if scope is not None and not scope and not branch_problems:
         if not stop:
             print("onto trace: nothing in scope on this branch")
         return 0
@@ -400,7 +416,7 @@ def _trace(args) -> int:
             return 1
 
     graph = build_graph(ws)
-    problems = gates.in_scope(gates.run_shacl(ws, graph), scope)
+    problems = gates.in_scope(gates.run_shacl(ws, graph), scope) + branch_problems
     rows = [
         row
         for row in gates.traceability(graph)
@@ -448,12 +464,16 @@ def _trace(args) -> int:
         return 0
     if not stop:
         return 1
+    blocking = report.errors(problems)
     message = (
-        "onto trace: the traceability gate does not hold for what this branch touched.\n"
-        f"{report.render_text(report.errors(problems))}\n"
-        "Make the tests pass, or take back the claim: a Requirement or Task that is not "
-        "verified is in_progress, not done."
+        "onto trace: the gates do not hold for what this branch touched.\n"
+        f"{report.render_text(blocking)}"
     )
+    if any(problem not in branch_problems for problem in blocking):
+        message += (
+            "\nMake the tests pass, or take back the claim: a Requirement or Task that is "
+            "not verified is in_progress, not done."
+        )
     print(message, file=sys.stderr)
     # One forced continuation is enough. If the gate still fails after it, hand
     # back to the person rather than loop: CI holds the line.
@@ -701,6 +721,16 @@ def _parser() -> argparse.ArgumentParser:
 
     p = command("guard", _guard, "PreToolUse hook: protect ontology sources and generated files")
     p.add_argument("path", nargs="?", help="ask what the guard would decide for a path")
+    p.add_argument(
+        "--deny-rules",
+        action="store_true",
+        help="print the permissions.deny rules for generated files and evidence",
+    )
+    p.add_argument(
+        "--check-settings",
+        action="store_true",
+        help="fail if .claude/settings.json lacks one of those rules",
+    )
 
     p = command("build", _build, "build the traceability graph and report its size")
     p.add_argument("--out", help="also write the graph to this file")

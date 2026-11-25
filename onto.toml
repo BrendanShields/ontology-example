@@ -22,6 +22,9 @@ protected = [
 ]
 # With an OntologyChangeRequest in progress: "ask" a person to confirm each edit, or "allow".
 on_open_ocr = "ask"
+# Files that configure the gates: an edit to one is put to a person first. This file and
+# the .claude settings files always are, whatever is listed here.
+gate_files = [".github/CODEOWNERS", ".github/workflows/**"]
 
 # One table per bounded context. Adding an app means adding a table here and a
 # schema under ontology/domains/.

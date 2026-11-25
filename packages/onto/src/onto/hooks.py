@@ -32,11 +32,29 @@ def read_event(stream=None) -> dict:
 
 
 def edited_file(event: dict) -> str | None:
-    """The file an Edit or Write tool call is about."""
+    """The file an Edit, Write or NotebookEdit tool call is about."""
     tool_input = event.get("tool_input")
-    if isinstance(tool_input, dict) and isinstance(tool_input.get("file_path"), str):
-        return tool_input["file_path"]
+    if isinstance(tool_input, dict):
+        for name in ("file_path", "notebook_path"):
+            if isinstance(tool_input.get(name), str):
+                return tool_input[name]
     return None
+
+
+def text_after(tool_input: dict, current: str | None) -> str | None:
+    """The file's text once the tool call has run. None if the call would not apply."""
+    if isinstance(tool_input.get("content"), str):  # Write
+        return tool_input["content"]
+    edits = tool_input.get("edits") if isinstance(tool_input.get("edits"), list) else [tool_input]
+    text = current
+    for edit in edits:
+        if not isinstance(edit, dict):
+            return None
+        old, new = edit.get("old_string"), edit.get("new_string")
+        if text is None or not isinstance(old, str) or not isinstance(new, str) or old not in text:
+            return None
+        text = text.replace(old, new) if edit.get("replace_all") else text.replace(old, new, 1)
+    return text
 
 
 def inserted_text(event: dict) -> str | None:

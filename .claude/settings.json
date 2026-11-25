@@ -3,12 +3,23 @@
     "allow": [
       "Bash(bin/onto *)",
       "Bash(./bin/onto *)"
+    ],
+    "deny": [
+      "Edit(/apps/call-qa-agent/src/call_qa_agent/generated.py)",
+      "Edit(/apps/call-qa-agent/src/call_qa_agent/schemas/call-qa.bindings.json)",
+      "Edit(/apps/call-qa-agent/src/call_qa_agent/schemas/call-qa.glossary.json)",
+      "Edit(/apps/call-qa-agent/src/call_qa_agent/schemas/call-qa.schema.json)",
+      "Edit(/docs/generated/call-qa.md)",
+      "Edit(/docs/generated/workflow.md)",
+      "Edit(/ontology/schemas/workflow.schema.json)",
+      "Edit(/ontology/shapes/workflow.shacl.ttl)",
+      "Edit(/work/evidence/**)"
     ]
   },
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Edit|Write",
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit",
         "hooks": [
           {
             "type": "command",
@@ -20,7 +31,7 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "Edit|Write",
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit",
         "hooks": [
           {
             "type": "command",

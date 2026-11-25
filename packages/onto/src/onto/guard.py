@@ -2,46 +2,73 @@
 
 * Generated artefacts are never edited: their source is.
 * Evidence is never written by hand: a test run produces it.
+* The files that configure the gates are put to a person before they change.
+* A request is approved by a person: so is the edit that marks it approved.
 * The ontology sources change only while an OntologyChangeRequest is in
   progress, and then (by default) each edit is put to a person to confirm.
 
 The guard is a speed bump with a paper trail, not the control itself: the
-control is the pull request, reviewed by the owners named in CODEOWNERS.
+control is the pull request, reviewed by the owners named in CODEOWNERS. It
+sees Claude's file tools only. What a shell command wrote is caught afterwards
+by the branch gates in `onto trace` (see changes.py).
 """
 
 from __future__ import annotations
 
-from .config import matches
+from . import frontmatter, hooks, paths
+from .config import CONFIG_FILE, matches
 from .workspace import Workspace
 
 ALLOW, DENY, ASK = "allow", "deny", "ask"
+APPROVED = ("in_progress", "done")  # the statuses a person gives a request they accept
+
+# Not configurable: a list read from onto.toml could be emptied by editing onto.toml.
+GATE_CONFIG = (CONFIG_FILE, ".claude/settings.json", ".claude/settings.local.json")
 
 
-def decide(ws: Workspace, path: str) -> tuple[str, str]:
-    """(decision, reason) for an edit to `path`."""
+def decide(ws: Workspace, path: str, tool_input: dict | None = None) -> tuple[str, str]:
+    """(decision, reason) for an edit to `path`, given what the tool was asked to write."""
     cfg = ws.cfg
-    rel = cfg.rel(path)
+    rel = cfg.rel(path)  # as written, for messages
+    key = paths.key(cfg, path)  # as the filesystem compares it, for deciding
 
-    generated = cfg.generated_files()
+    def fold(patterns) -> tuple[str, ...]:
+        return tuple(paths.fold(cfg, pattern) for pattern in patterns)
+
     manifests = {cfg.rel(c.bindings_json) for c in cfg.contexts.values() if c.bindings_json}
-    if rel in manifests:
-        return DENY, (
-            f"{rel} is generated from {generated[rel]} and the functions it binds. "
-            "Run `onto gen` to bring it up to date."
-        )
-    if rel in generated:
-        return DENY, (
-            f"{rel} is generated from {generated[rel]}. Change {generated[rel]} "
-            "(through an OntologyChangeRequest) and run `onto gen`."
-        )
+    for target, source in cfg.generated_files().items():
+        if key == paths.fold(cfg, target) and target in manifests:
+            return DENY, (
+                f"{target} is generated from {source} and the functions it binds. "
+                "Run `onto gen` to bring it up to date."
+            )
+        if key == paths.fold(cfg, target):
+            return DENY, (
+                f"{target} is generated from {source}. Change {source} "
+                "(through an OntologyChangeRequest) and run `onto gen`."
+            )
 
-    if rel.startswith(cfg.rel(cfg.evidence_dir) + "/"):
+    if key.startswith(paths.fold(cfg, cfg.rel(cfg.evidence_dir)) + "/"):
         return DENY, (
             f"{rel} is evidence, which only a test run may write: "
             "run `onto evidence collect` or `pytest --onto-evidence`."
         )
 
-    if not matches(rel, cfg.protected):
+    if matches(key, fold((*GATE_CONFIG, *cfg.gate_files))):
+        return ASK, (
+            f"{rel} configures the gates: what they protect, when they run, or who reviews. "
+            "Confirm that this change to the gates themselves is intended."
+        )
+
+    if key.startswith(paths.fold(cfg, cfg.rel(cfg.work_dir)) + "/") and tool_input:
+        approved = _approval(ws, path, tool_input)
+        if approved:
+            return ASK, (
+                f"This edit sets {approved[0]} to {approved[1]}. A person approves an "
+                "OntologyChangeRequest: confirm that you do."
+            )
+
+    if not matches(key, fold(cfg.protected)):
         return ALLOW, ""
 
     open_requests = sorted(
@@ -61,3 +88,38 @@ def decide(ws: Workspace, path: str) -> tuple[str, str]:
         f"Ontology edit to {rel} under {requests}. Confirm that this edit is what the "
         "request asks for."
     )
+
+
+def _approval(ws: Workspace, path: str, tool_input: dict) -> tuple[str, str] | None:
+    """(request id, status) if the edit leaves an approved OntologyChangeRequest that was not there.
+
+    The file is compared as a whole, before and after. An approval spread over
+    edits that each change one thing (the id away, the status, the id back)
+    still ends in one edit that makes the file an approved request.
+    """
+    target = ws.cfg.root / path
+    try:
+        current = target.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        current = None
+    after = _approved_request(ws, hooks.text_after(tool_input, current))
+    return after if after != _approved_request(ws, current) else None
+
+
+def _approved_request(ws: Workspace, text: str | None) -> tuple[str, str] | None:
+    """(id, status) if the text is an OntologyChangeRequest in an approved status."""
+    meta = _frontmatter(text)
+    identifier, status = meta.get("id"), str(meta.get("status", ""))
+    # Loading the schema is the slow part, so it comes after everything that can say no.
+    if status not in APPROVED or not isinstance(identifier, str):
+        return None
+    if ws.schema.class_for_id(identifier) != "OntologyChangeRequest":
+        return None
+    return identifier, status
+
+
+def _frontmatter(text: str | None) -> dict:
+    try:
+        return frontmatter.split(text or "")[0]
+    except frontmatter.FrontmatterError:
+        return {}

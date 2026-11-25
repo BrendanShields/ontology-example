@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import argparse
 import hashlib
 import json
 import subprocess
@@ -27,6 +26,26 @@ GATES = [
 # an identifier so that it can also be planted in code.
 SENTINEL = "zqx_planted_words_7731"
 DOMAIN = "apps/call-qa-agent/src/call_qa_agent/domain/example.py"
+# A bounded context that binds one rule, which no code enforces.
+SHOP = """\
+id: https://shop.example/ontology/shop
+name: shop
+prefixes:
+  linkml: https://w3id.org/linkml/
+  shop: https://shop.example/ontology/shop/
+default_prefix: shop
+default_range: string
+imports:
+  - linkml:types
+enums:
+  RefusalRule:
+    description: The rules an Order can break.
+    annotations:
+      binding: rule
+    permissible_values:
+      OVER_LIMIT:
+        description: The Order is worth more than the shop takes at once.
+"""
 
 
 @pytest.fixture
@@ -55,18 +74,8 @@ def gate(index: dict, name: str) -> dict:
 
 
 def with_rules(monkeypatch, handler) -> None:
-    """Give this onto a `rules` command, as the module that owns it would."""
-    real = cli._parser
-
-    def parser():
-        built = real()
-        (sub,) = (a for a in built._actions if isinstance(a, argparse._SubParsersAction))
-        rules = sub.add_parser("rules")
-        rules.add_argument("--format", choices=("text", "json"), default="text")
-        rules.set_defaults(handler=handler)
-        return built
-
-    monkeypatch.setattr(cli, "_parser", parser)
+    """Put a handler in place of `onto rules`, to make that gate say or do anything."""
+    monkeypatch.setattr(cli, "_rules", handler)
 
 
 def test_verify_writes_one_index_of_what_the_gates_showed(repo, capsys):
@@ -79,9 +88,7 @@ def test_verify_writes_one_index_of_what_the_gates_showed(repo, capsys):
     assert code == 0 and index["ok"] is True
     assert "every gate holds" in out and INDEX in out
     assert [g["name"] for g in index["gates"]] == GATES
-    assert {g["name"]: g["status"] for g in index["gates"]} == dict.fromkeys(GATES, "passed") | {
-        "rules": "skipped"
-    }
+    assert {g["name"]: g["status"] for g in index["gates"]} == dict.fromkeys(GATES, "passed")
     assert gate(index, "trace")["counts"] == {
         "requirements": 1,
         "with_test": 1,
@@ -117,7 +124,13 @@ def test_the_index_pins_each_ontology_source_and_generated_file_by_hash(repo):
         "ontology/shapes/gates.shacl.ttl",
         "ontology/domains/call-qa.yaml",
     }
-    assert {g["path"]: g["source"] for g in index["generated_files"]} == cfg.generated_files()
+    # A bindings manifest is declared, and written only once the glossary binds something.
+    assert {g["path"]: g["source"] for g in index["generated_files"]} == {
+        path: source
+        for path, source in cfg.generated_files().items()
+        if (repo.root / path).is_file()
+    }
+    assert "ontology/schemas/workflow.schema.json" in {g["path"] for g in index["generated_files"]}
     for entry in (*index["ontology_sources"], *index["generated_files"]):
         assert entry["sha256"] == digest(entry["path"])
     assert {g["status"] for g in index["generated_files"]} == {"unchanged"}
@@ -256,39 +269,40 @@ def test_an_interrupted_run_is_not_recorded_as_holding(repo, monkeypatch):
     assert [g["name"] for g in index["gates"]] == GATES[: GATES.index("rules")]
 
 
-def test_the_rules_gate_runs_when_this_onto_has_one(repo, monkeypatch):
-    seen = []
-
-    def rules(args) -> int:
-        seen.append(args.format)
-        print("[]")
-        return 0
-
-    with_rules(monkeypatch, rules)
+def test_the_rules_gate_is_the_real_onto_rules(repo, capsys):
     code, index = verify(repo)
 
-    assert code == 0 and seen == ["json"]
-    assert gate(index, "rules")["status"] == "passed"
-    assert gate(index, "rules")["command"] == "onto rules --format json"
-    assert gate(index, "rules")["counts"] == {"errors": 0, "warnings": 0}
-
-
-def test_the_rules_gate_counts_a_report_that_calls_them_problems(repo, monkeypatch, capsys):
-    def rules(args) -> int:
-        problem = {"rule": "unproven-rule", "severity": "error", "subject": "Speaker"}
-        print(json.dumps({"contexts": [], "problems": [problem]}))
-        return 1
-
-    with_rules(monkeypatch, rules)
-    code, index = verify(repo)
-
-    assert code == 1
-    assert gate(index, "rules")["counts"] == {
-        "errors": 1,
-        "warnings": 0,
-        "by_rule": {"unproven-rule": 1},
+    assert code == 0
+    assert gate(index, "rules") == {
+        "name": "rules",
+        "command": "onto rules --format json",
+        "exit_status": 0,
+        "status": "passed",
+        "counts": {"errors": 0, "warnings": 0},
     }
-    assert "by_rule" not in capsys.readouterr().out
+
+
+def test_a_rule_that_onto_rules_finds_unbound_fails_verify(repo, capsys):
+    repo.context(
+        "shop",
+        SHOP,
+        paths=["apps/shop/**"],
+        domain_paths=["apps/shop/src/shop/domain/**"],
+        bindings_json="apps/shop/src/shop/schemas/shop.bindings.json",
+    )
+    repo.write("apps/shop/src/shop/domain/orders.py", "def check(lines):\n    return None\n")
+
+    code, index = verify(repo)
+
+    assert code == 1 and index["ok"] is False
+    assert gate(index, "rules")["status"] == "failed"
+    assert gate(index, "rules")["counts"] == {
+        "errors": 2,
+        "warnings": 0,
+        "by_rule": {"unbound-rule": 1, "unproven-rule": 1},
+    }
+    out = capsys.readouterr().out
+    assert "by_rule" not in out and "OVER_LIMIT" not in out
 
 
 def test_verify_of_a_branch_that_touched_nothing_names_the_commit(repo):
@@ -328,5 +342,10 @@ def test_a_branch_whose_base_cannot_be_found_answers_for_everything(repo, capsys
     assert code == 1 and index["ok"] is False
     assert index["scope"] == "branch" and index["scope_applied"] == "all"
     assert index["varies_per_run"]["base_commit"] is None
-    assert [v["subject"] for v in index["trace"]["violations"]] == ["REQ-0001"]
+    # The unverified claim is in scope, and so is the missing base: the gates over
+    # what the branch changed cannot be answered by checking everything.
+    assert [(v["rule"], v.get("subject")) for v in index["trace"]["violations"]] == [
+        ("gate:BranchBaseIsKnown", None),
+        ("gate:CompleteRequirementIsVerified", "REQ-0001"),
+    ]
     assert "no base branch" in capsys.readouterr().out

@@ -187,44 +187,57 @@ def _git(cfg: Config, *args: str) -> str | None:
     return done.stdout if done.returncode == 0 else None
 
 
+def base_refs(cfg: Config) -> tuple[str, ...]:
+    """The refs tried, in order, as the base this branch is compared with."""
+    return tuple(dict.fromkeys((cfg.base_ref, "main", "master")))
+
+
 def base_commit(cfg: Config) -> str | None:
-    """Where this branch left the base branch. None when no base branch can be found."""
-    for ref in dict.fromkeys((cfg.base_ref, "main", "master")):
+    """Where this branch left its base. None if no base ref is in the repository."""
+    for ref in base_refs(cfg):
         merge_base = _git(cfg, "merge-base", "HEAD", ref)
         if merge_base:
             return merge_base.strip()
     return None
 
 
-def changed_files(cfg: Config) -> set[str] | None:
+def has_commits(cfg: Config) -> bool:
+    return _git(cfg, "rev-parse", "--verify", "--quiet", "HEAD") is not None
+
+
+def changed_files(cfg: Config, *, or_uncommitted: bool = False) -> set[str] | None:
     """Files that differ from the base branch, plus untracked ones. None when that is unknown.
 
-    Unknown means outside a git repository, or in one where no base branch
-    resolves (a shallow or single-branch clone). The caller then takes
-    everything: comparing with HEAD instead would call every commit unchanged.
+    Unknown means outside a git repository, or on a branch with commits and no
+    base to compare them with (a shallow or single-branch clone). The caller
+    then answers for everything: comparing with HEAD instead would call every
+    commit unchanged. `or_uncommitted` asks for exactly that comparison when
+    the base is missing, for the stop gate, which judges what the session can
+    still put right.
     """
     if _git(cfg, "rev-parse", "--is-inside-work-tree") is None:
         return None
     untracked = _git(cfg, "ls-files", "--others", "--exclude-standard") or ""
-    if _git(cfg, "rev-parse", "--verify", "--quiet", "HEAD") is None:
-        # a repository without commits yet: everything is new
+    if not has_commits(cfg):  # everything is new
         changed = _git(cfg, "ls-files", "--cached") or ""
     else:
-        base = base_commit(cfg)
+        base = base_commit(cfg) or ("HEAD" if or_uncommitted else None)
         if base is None:
             return None
-        changed = _git(cfg, "diff", "--name-only", "--relative", base) or ""
+        # Without rename detection a moved file is listed under both of its names.
+        changed = _git(cfg, "diff", "--name-only", "--no-renames", "--relative", base) or ""
     return {line for line in (changed + untracked).splitlines() if line}
 
 
-def branch_scope(ws: Workspace) -> set[str] | None:
+def branch_scope(ws: Workspace, *, or_uncommitted: bool = False) -> set[str] | None:
     """The work items the current branch touches, with what they trace to. None means all.
 
     A branch is answerable for the items it changed and, when it changed an
     app's code, for every finished requirement of that app's bounded context:
-    they have to hold after the change as they did before it.
+    they have to hold after the change as they did before it. A branch whose
+    changes are unknown is answerable for all of them.
     """
-    changed = changed_files(ws.cfg)
+    changed = changed_files(ws.cfg, or_uncommitted=or_uncommitted)
     if changed is None:
         return None
     ids: set[str] = set()

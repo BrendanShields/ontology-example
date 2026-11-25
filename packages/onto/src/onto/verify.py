@@ -16,7 +16,6 @@ Two rules shape it:
 
 from __future__ import annotations
 
-import argparse
 import contextlib
 import hashlib
 import io
@@ -33,7 +32,7 @@ from .gates import base_commit, branch_scope
 from .workspace import Workspace
 
 INDEX = "verify.json"
-PASSED, FAILED, ERRORED, SKIPPED = "passed", "failed", "error", "skipped"
+PASSED, FAILED, ERRORED = "passed", "failed", "error"
 RESULTS = ("pass", "fail")
 SEVERITIES = ("error", "warning")
 VERDICTS = ("untested", "failing", "no evidence", "verified")
@@ -61,7 +60,7 @@ def run(scope: str, out_dir: Path | None = None) -> int:
     try:
         _run_gates(cfg, scope, out_dir, index)
         # Only a run that reached its end can say the gates hold.
-        index["ok"] = all(gate["status"] in (PASSED, SKIPPED) for gate in index["gates"])
+        index["ok"] = all(gate["status"] == PASSED for gate in index["gates"])
     finally:
         index["varies_per_run"]["finished_at"] = _now()
         out_dir.mkdir(parents=True, exist_ok=True)
@@ -92,7 +91,6 @@ def _run_gates(cfg: Config, scope: str, out_dir: Path, index: dict) -> None:
         index["scope_applied"] = "all"
     varies["uncommitted_files"] = len((_git(cfg, "status", "--porcelain") or "").splitlines())
     seconds: dict[str, float] = varies.setdefault("seconds", {})
-    commands = _commands()
 
     def gate(name: str, measure, *options: str) -> None:
         """Record one gate. `measure` returns (exit status, counts) and may raise."""
@@ -185,21 +183,8 @@ def _run_gates(cfg: Config, scope: str, out_dir: Path, index: dict) -> None:
         gate(name, violations_of([name, "--format", "json"]))
     gate("evidence collect", collect, "--scope", scope)
     gate("trace", trace, "--scope", scope)
-    # `rules` belongs to another module of the tooling and may not be installed.
-    if "rules" in commands:
-        options = _supported(commands["rules"], scope)
-        gate("rules", violations_of(["rules", *options]), *options)
-    else:
-        index["gates"].append(
-            {
-                "name": "rules",
-                "command": "onto rules",
-                "exit_status": None,
-                "status": SKIPPED,
-                "reason": "this onto has no `rules` command",
-                "counts": {},
-            }
-        )
+    # `onto rules` has no scope: a bound rule holds for the whole context or not at all.
+    gate("rules", violations_of(["rules", "--format", "json"]), "--format", "json")
     gate("prov emit", emit, "--scope", scope)
 
 
@@ -221,26 +206,6 @@ def _json(printed: str):
         return json.loads(printed)
     except ValueError:
         return None
-
-
-def _commands() -> dict[str, argparse.ArgumentParser]:
-    from . import cli
-
-    for action in cli._parser()._actions:
-        if isinstance(action, argparse._SubParsersAction):
-            return dict(action.choices)
-    return {}
-
-
-def _supported(command: argparse.ArgumentParser, scope: str) -> list[str]:
-    """The options of ours that a command we do not own understands."""
-    options = command._option_string_actions
-    argv: list[str] = []
-    if "--scope" in options and scope in (options["--scope"].choices or ()):
-        argv += ["--scope", scope]
-    if "--format" in options and "json" in (options["--format"].choices or ()):
-        argv += ["--format", "json"]
-    return argv
 
 
 # --- typed fields only -----------------------------------------------------------
