@@ -17,7 +17,7 @@ uv sync
 make check
 ```
 
-`make check` runs what CI runs, in order: generated files match the ontology, work items validate, the domain layer uses glossary vocabulary, the settings deny edits to generated files, lint, the import contracts, 683 tests that record evidence, the traceability gate, and the rule bindings. Two runs on the laptop this was built on took 186 and 194 seconds, nearly all of it in the tests.
+`make check` runs what CI runs, in order: generated files match the ontology, work items validate, the domain layer uses glossary vocabulary, the settings deny edits to generated files, lint, the import contracts, 731 tests that record evidence, the traceability gate, the rule bindings, and the check of the vendored skill files. CI then runs `onto prov emit` and `onto verify` as well. Two runs on the laptop this was built on took 186 and 194 seconds, nearly all of it in the tests.
 
 ```bash
 bin/onto view
@@ -212,7 +212,7 @@ Stop          -            an ontology source changed by a shell command  block 
 
 Things to break, each of which you can undo:
 
-**Use a retired name in the domain layer.** Add `def load_rubric(agent_id): ...` to `apps/call-qa-agent/src/call_qa_agent/domain/scoring.py` and run `bin/onto check-terms`. Undo it with `git checkout`:
+**Use a retired name in the domain layer.** Add two blank lines and `def load_rubric(agent_id): ...` at the end of `apps/call-qa-agent/src/call_qa_agent/domain/scoring.py` and run `bin/onto check-terms`. Undo it with `git checkout`:
 
 ```text
 apps/call-qa-agent/src/call_qa_agent/domain/scoring.py:84: error[denied-term] 'agent' uses 'Agent', a denied synonym: the call-qa glossary calls this Representative
@@ -256,7 +256,7 @@ work/REQ-0026.md: error[gate:CompleteRequirementIsVerified] Requirement is claim
 onto trace: 1 error(s), 0 warning(s)
 ```
 
-Evidence cannot be written by hand to get past this. It is recorded by a test run (`uv run pytest --onto-evidence`), lives in `work/evidence/`, and is not committed: CI collects it fresh.
+Evidence written by hand does not get past this. It is recorded by a test run (`uv run pytest --onto-evidence`), lives in `work/evidence/`, and is not committed: CI collects it fresh. An Evidence item anywhere else under `work/`, one that git tracks, or a second one for the same Test is an `evidence-by-hand` error in `bin/onto validate` and is left out of the graph, and `bin/onto trace` exits 1 for a done Requirement whose row reads `failing` or `no evidence`. This holds as long as the tooling under `packages/onto/` is itself unchanged: see the limits.
 
 Those are the three to try. One more gate has no quick way to break it here, because the binding is declared in the glossary: `bin/onto rules` holds every term the glossary marks `binding: rule` or `binding: computed` to a function that produces it and to a proof. It reports 10 bound terms here, each in this shape:
 
@@ -305,7 +305,7 @@ The app's write path is checked by running the real code on every case within a 
 
 Each count is asserted as a literal in [`apps/call-qa-agent/tests/bounded/test_bounded.py`](apps/call-qa-agent/tests/bounded/test_bounded.py), so a bound that shrinks by accident fails the test. Each property is one sentence in `explore.PROPERTIES`.
 
-**Mutants.** 63 planted faults, each an exact swap of source text applied to a copy of the package, each of which a named property must report. A swap whose text no longer occurs exactly once fails on purpose: the guarded line changed and a person must look again. They are 66 test nodes with their controls. `uv run pytest -m 'not mutants'` leaves them out for a fast run. `make check` and CI run them.
+**Mutants.** 64 planted faults, each an exact swap of source text applied to a copy of the package, each of which a named property must report. A swap whose text no longer occurs exactly once fails on purpose: the guarded line changed and a person must look again. They are 67 test nodes with their controls. `uv run pytest -m 'not mutants'` leaves them out for a fast run. `make check` and CI run them.
 
 **Statecharts.** Two state diagrams are generated from the runs, not drawn by hand: [`docs/evaluation-loop.md`](apps/call-qa-agent/docs/evaluation-loop.md) and [`docs/publication.md`](apps/call-qa-agent/docs/publication.md) under the app. A test fails when a committed diagram and the code disagree.
 
@@ -453,7 +453,7 @@ The framework was checked, part by part, against a candidate specification for a
 | --- | --- | --- | --- |
 | Data layer: domain nouns as LinkML classes, slots and enums | already here | the glossary is the data layer and the only hand-written source | none |
 | Logic layer: each rule names its Python function and its tests | adapted | the glossary marks which terms are rules. The function is found by reading the code and the proof is the Requirement chain, so a rename is not an ontology change | `DEC-0017` |
-| Action layer compiled into a typed SDK with `dry_run()` and `stage()` | rejected | two verbs with no effect to rehearse. The one effect has a ledger. `onto new --dry-run` was adopted for work items | `DEC-0011` |
+| Action layer compiled into a typed SDK with `dry_run()` and `stage()` | rejected | two verbs with no effect to rehearse. The one effect has a ledger. `onto new --dry-run` was adopted for work items | `DEC-0011`, `DEC-0014` |
 | Memory layer: decisions with supersedes and affects, constraints, anti-patterns | adapted | `affects` was added to Decision. A done Decision is the constraint and a denied synonym is the anti-pattern | `DEC-0018` |
 | Types generated from the ontology and never hand-edited | already here | `onto gen`, with a drift check, a guard and deny rules | none |
 | Compiled OWL, with `owl:FunctionalProperty` and `owl:disjointWith` as enforcement | rejected | an OWL axiom infers and does not refuse. No axiom rejected bad data in seven cases, and inference hides a violation the gates rely on | `DEC-0013` |
@@ -481,14 +481,14 @@ The framework was checked, part by part, against a candidate specification for a
 
 Checked on 2026-11-26, on one Apple laptop, by running the command named:
 
-- `make check` exits 0. 683 tests are collected: 426 for the tooling, 235 for the app, 22 for the competency questions. 682 pass and 1 is skipped: it needs a volume that tells `DOMAIN` from `domain`.
+- `make check` exits 0. 731 tests are collected: 462 for the tooling, 247 for the app, 22 for the competency questions. 730 pass and 1 is skipped: `test_a_known_disagreement_is_still_one` in `test_generator_agreement.py`, which has no case while `KNOWN_DISAGREEMENTS` is empty. On a volume that tells `DOMAIN` from `domain`, the letter-case test in `test_guard_hardening.py` would skip as well.
 - `bin/onto validate` reports 113 work items, 0 errors, 0 warnings. `bin/onto trace` reports 24 of 24 agreed requirements verified by passing evidence. `bin/onto rules` reports 10 bound terms, 0 errors. `bin/onto verify --scope all` reports that every gate holds.
 - `make hooks` drove each hook with a payload in the shape the Claude Code hooks reference documents, in a scratch repository, and checked its answer and exit code.
 - `make mods`: the three mods pass `claude plugin validate` and their 8 tests, with Claude Code 2.1.332.
 - `uv run lint-imports` keeps 5 contracts. `tools/check_vendored.py` finds the 14 vendored files unchanged.
 - `gen-owl` runs on the call-qa glossary and emits no `FunctionalProperty`, `disjointWith` or `oneOf`. Its output is not kept.
 - The offline replay and the review and publication commands above were run, and the output shown is what they printed.
-- The adoption guide was walked by hand in a temporary repository: `onto init`, the four checks after it, a Requirement from written to verified, and a rule change that `onto trace` refused while the new Requirement was not done and accepted once it was. This used the editable install of this repository, not a wheel. The guide's steps for a first glossary term, an Incident, CI and code owners were not walked by hand.
+- The adoption guide was walked by hand in a temporary repository: `onto init`, the five checks after it, a Requirement from written to verified, and a rule change that `onto trace` refused while the new Requirement was not done and accepted once it was. This used the editable install of this repository, not a wheel. Separately, the guide's install route was run from a built wheel committed into a new repository: `onto init`, a commit, then a fresh clone with the build folder moved away, where `uv sync --locked`, each step of the scaffolded workflow and `make onto-check` exited 0. The guide's steps for a first glossary term, an Incident, CI and code owners were not walked by hand.
 
 Observed in the session that built this, and not by a test: the guard asked a person before each request was approved and before each edit to an ontology source.
 
@@ -521,6 +521,7 @@ What a reader must know before relying on this. The first five are product decis
 - **The rule scan goes by name.** A term in a parameter default or in dead code counts as produced. The proof half checks that a verified Requirement lists the term, not that its Test exercises the rule.
 - **The import contracts are deny lists.** A new module nobody listed can be imported by the domain layer.
 - **A Requirement cannot be withdrawn with nothing in its place, and nothing is retired from the record.**
+- **The gates are code and configuration in the tree they judge.** In this repository the tooling lives under `packages/onto/`, so a change to a gate is part of the change under review: an exemption written into `gates.py` passes every step of `make check`. The guard asks before Claude's file tools edit `onto.toml`, the settings and the workflow, and it does not ask for `packages/onto/**`, `bin/onto`, the `Makefile` or `ontology/cq/**`. `onto validate` fails when `onto.toml` lists no graph gates, leaves an ontology source unprotected or compares the branch with itself, and `onto guard --check-settings` fails when a hook or a deny rule is gone. A setting that was loosened and is still valid passes. Code owner review of those paths is the control, and no gate requires it.
 - **`onto build --out` writes to any path,** and `bin/onto` is allow-listed, so it can overwrite a guarded file without a prompt.
 - **With no base branch to compare with, the stop gate sees only uncommitted changes.** `onto trace` in `make check` and CI fails with `gate:BranchBaseIsKnown` instead. A push to the default branch compares it with itself, so the pull-request run is the control for an ontology change.
 - **No property reads what is sent to the model.** A fault in the text of a tool result or in the conversation history passes the bounded checks.
@@ -536,7 +537,7 @@ What a reader must know before relying on this. The first five are product decis
 - **A hook is a prompt and a paper trail, not the control.** The controls are the gates that read the diff, and the review of the pull request.
 - **Agents propose and people decide** on the ontology, on what leaves the repository, and on an evaluation that needs review at runtime.
 - **A check must be seen to fail.** Each gate constraint has a test that breaks it, and each bounded property has a mutant.
-- **A broken tool never blocks.** A hook that cannot run exits with a non-blocking error. CI is the backstop.
+- **A broken tool never blocks.** A hook that cannot run exits with a non-blocking error. CI is the backstop. The guard is the one exception, and it does not block either: where there is an ontology layer and it cannot decide on an edit, it asks a person.
 
 Left out on purpose, each with its Decision: OWL axioms as gates and a committed OWL file (`DEC-0013`), an MCP server (`DEC-0014`), a TLA+ or SMT model (`DEC-0015`), a hook that runs the suite on every edit and a gate on comments (`DEC-0016`), a generated action layer (`DEC-0011`), a Release class and an operate stage (`DEC-0018`), a plugin as the way to adopt (`DEC-0019`). Also left out, with no Decision: a graph server, imports of large external ontologies, and a code graph. The glossary maps two classes to schema.org by reference and imports nothing.
 
