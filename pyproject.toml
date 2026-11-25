@@ -25,6 +25,7 @@ dev = [
     "pytest>=8",
     "hypothesis>=6",
     "ruff>=0.6",
+    "import-linter>=2",
 ]
 
 [tool.pytest.ini_options]
@@ -44,3 +45,52 @@ select = ["E", "F", "I", "B", "UP", "SIM"]
 # An assertion reads best on one line, even a long one.
 "**/tests/**" = ["E501"]
 "ontology/cq/test_*.py" = ["E501"]
+
+# The layering of each app, checked by `lint-imports`. check-terms checks the names
+# a domain layer uses. These check what it is allowed to reach.
+[tool.importlinter]
+root_packages = ["call_qa_agent"]
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "call-qa: the domain layer reaches only the generated types"
+type = "forbidden"
+source_modules = ["call_qa_agent.domain"]
+forbidden_modules = [
+    "call_qa_agent.agent",
+    "call_qa_agent.tools",
+    "call_qa_agent.session",
+    "call_qa_agent.cli",
+    "call_qa_agent.replay",
+    "call_qa_agent.prompts",
+    "anthropic",
+]
+
+[[tool.importlinter.contracts]]
+name = "call-qa: the generated types import no app module"
+type = "forbidden"
+source_modules = ["call_qa_agent.generated"]
+forbidden_modules = [
+    "call_qa_agent.domain",
+    "call_qa_agent.agent",
+    "call_qa_agent.tools",
+    "call_qa_agent.session",
+    "call_qa_agent.cli",
+    "call_qa_agent.replay",
+    "call_qa_agent.prompts",
+    "anthropic",
+]
+
+[[tool.importlinter.contracts]]
+name = "call-qa: each layer imports only the layers below it"
+type = "layers"
+layers = [
+    "call_qa_agent.cli",
+    "call_qa_agent.replay",
+    "call_qa_agent.agent",
+    "call_qa_agent.prompts",
+    "call_qa_agent.tools",
+    "call_qa_agent.session",
+    "call_qa_agent.domain",
+    "call_qa_agent.generated",
+]

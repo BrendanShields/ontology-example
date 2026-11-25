@@ -15,6 +15,7 @@ check:            ## every gate CI runs, in the order CI runs them
 	$(ONTO) check-terms
 	$(ONTO) guard --check-settings
 	uv run ruff check .
+	uv run lint-imports
 	uv run pytest --onto-evidence
 	$(ONTO) trace
 	uv run python tools/check_vendored.py
