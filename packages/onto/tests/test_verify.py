@@ -234,7 +234,7 @@ def test_a_gate_that_crashes_is_an_error_named_by_its_kind_alone(repo, monkeypat
     assert code == 1
     assert gate(index, "rules") == {
         "name": "rules",
-        "command": "onto rules",
+        "command": "onto rules --format json",
         "exit_status": None,
         "status": "error",
         "reason": "RuntimeError",
@@ -269,7 +269,26 @@ def test_the_rules_gate_runs_when_this_onto_has_one(repo, monkeypatch):
 
     assert code == 0 and seen == ["json"]
     assert gate(index, "rules")["status"] == "passed"
+    assert gate(index, "rules")["command"] == "onto rules --format json"
     assert gate(index, "rules")["counts"] == {"errors": 0, "warnings": 0}
+
+
+def test_the_rules_gate_counts_a_report_that_calls_them_problems(repo, monkeypatch, capsys):
+    def rules(args) -> int:
+        problem = {"rule": "unproven-rule", "severity": "error", "subject": "Speaker"}
+        print(json.dumps({"contexts": [], "problems": [problem]}))
+        return 1
+
+    with_rules(monkeypatch, rules)
+    code, index = verify(repo)
+
+    assert code == 1
+    assert gate(index, "rules")["counts"] == {
+        "errors": 1,
+        "warnings": 0,
+        "by_rule": {"unproven-rule": 1},
+    }
+    assert "by_rule" not in capsys.readouterr().out
 
 
 def test_verify_of_a_branch_that_touched_nothing_names_the_commit(repo):
@@ -285,8 +304,29 @@ def test_verify_of_a_branch_that_touched_nothing_names_the_commit(repo):
     code, index = verify(repo, "--scope", "branch")
 
     assert code == 0 and index["scope"] == "branch" and index["trace"] is None
+    assert index["scope_applied"] == "branch"
+    assert gate(index, "trace")["counts"] == {"in_scope": 0}
     assert index["varies_per_run"]["commit"] == head.stdout.strip()
     assert index["varies_per_run"]["uncommitted_files"] == 0
 
     code, index = verify(repo, "--scope", "all")
     assert code == 1 and index["trace"]["violations"]
+
+
+def test_a_branch_whose_base_cannot_be_found_answers_for_everything(repo, capsys):
+    git = ["git", "-C", str(repo.root), "-c", "user.name=t", "-c", "user.email=t@example.com"]
+    git += ["-c", "commit.gpgsign=false"]
+    repo.item("REQ-0001", status="done")  # committed, and nothing verifies it
+    repo.write(".gitignore", "work/evidence/\nprov/\n.pytest_cache/\n__pycache__/\n")
+    # As a single-branch or shallow clone leaves it: no origin/main, no main, no master.
+    subprocess.run([*git, "init", "-q", "-b", "work"], check=True)
+    subprocess.run([*git, "add", "-A"], check=True)
+    subprocess.run([*git, "commit", "-q", "-m", "claim"], check=True)
+
+    code, index = verify(repo, "--scope", "branch")
+
+    assert code == 1 and index["ok"] is False
+    assert index["scope"] == "branch" and index["scope_applied"] == "all"
+    assert index["varies_per_run"]["base_commit"] is None
+    assert [v["subject"] for v in index["trace"]["violations"]] == ["REQ-0001"]
+    assert "no base branch" in capsys.readouterr().out

@@ -29,6 +29,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from .config import Config
+from .gates import base_commit, branch_scope
 from .workspace import Workspace
 
 INDEX = "verify.json"
@@ -47,6 +48,7 @@ def run(scope: str, out_dir: Path | None = None) -> int:
         "schema_version": 1,
         "ok": False,
         "scope": scope,
+        "scope_applied": scope,
         "base_ref": cfg.base_ref,
         "ontology_sources": _sources(cfg),
         "generated_files": [],
@@ -67,10 +69,14 @@ def run(scope: str, out_dir: Path | None = None) -> int:
         target.write_text(json.dumps(index, indent=2) + "\n", encoding="utf-8")
 
     for gate in index["gates"]:
-        counts = ", ".join(f"{value} {key}" for key, value in gate["counts"].items())
+        counts = ", ".join(
+            f"{value} {key}" for key, value in gate["counts"].items() if key != "by_rule"
+        )
         print(
             f"{gate['status']:8} {gate['command']:36} {counts or gate.get('reason', '')}".rstrip()
         )
+    if index["scope_applied"] != scope:
+        print(f"onto verify: no base branch found for {cfg.base_ref}: every item was checked")
     held = (
         "every gate holds" if index["ok"] else "a gate does not hold: rerun its command to see why"
     )
@@ -80,7 +86,10 @@ def run(scope: str, out_dir: Path | None = None) -> int:
 
 def _run_gates(cfg: Config, scope: str, out_dir: Path, index: dict) -> None:
     varies = index["varies_per_run"]
-    varies["base_commit"] = _git(cfg, "merge-base", "HEAD", cfg.base_ref)
+    varies["base_commit"] = base_commit(cfg)
+    # A branch whose base cannot be found answers for everything, and the index says so.
+    if _scope(Workspace.at(cfg.root), scope) is None:
+        index["scope_applied"] = "all"
     varies["uncommitted_files"] = len((_git(cfg, "status", "--porcelain") or "").splitlines())
     seconds: dict[str, float] = varies.setdefault("seconds", {})
     commands = _commands()
@@ -151,7 +160,7 @@ def _run_gates(cfg: Config, scope: str, out_dir: Path, index: dict) -> None:
         code, printed = _onto(["trace", "--scope", scope, "--format", "json"])
         parsed = _json(printed)
         if not isinstance(parsed, dict):  # nothing in scope on this branch
-            return code, {}
+            return code, {"in_scope": 0} if code == 0 else {}
         ws = Workspace.at(cfg.root)
         index["trace"] = {
             "coverage": {k: v for k, v in parsed.get("coverage", {}).items() if isinstance(v, int)},
@@ -178,7 +187,8 @@ def _run_gates(cfg: Config, scope: str, out_dir: Path, index: dict) -> None:
     gate("trace", trace, "--scope", scope)
     # `rules` belongs to another module of the tooling and may not be installed.
     if "rules" in commands:
-        gate("rules", violations_of(["rules", *_supported(commands["rules"], scope)]))
+        options = _supported(commands["rules"], scope)
+        gate("rules", violations_of(["rules", *options]), *options)
     else:
         index["gates"].append(
             {
@@ -239,7 +249,7 @@ def _supported(command: argparse.ArgumentParser, scope: str) -> list[str]:
 def _violation_counts(parsed) -> dict:
     """Errors and warnings of a gate's JSON report, and how many of each rule."""
     if isinstance(parsed, dict):
-        parsed = parsed.get("violations")
+        parsed = parsed.get("violations", parsed.get("problems"))  # `onto rules` says problems
     if not isinstance(parsed, list):
         return {}
     found = [v for v in parsed if isinstance(v, dict)]
@@ -308,8 +318,6 @@ def _commit(value) -> str | None:
 
 
 def _scope(ws: Workspace, scope: str) -> set[str] | None:
-    from .gates import branch_scope
-
     return None if scope == "all" else branch_scope(ws)
 
 
