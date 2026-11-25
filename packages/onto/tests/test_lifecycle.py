@@ -387,6 +387,26 @@ def test_a_requirement_withdrawn_before_its_successor_is_done_is_a_warning(repo)
     assert rules(repo, "REQ-0001") == []
 
 
+def test_a_shipped_rule_with_no_test_can_be_withdrawn_behind_a_draft(repo, capsys):
+    """A limit of the gates as they stand, pinned so that it is known.
+
+    A superseded Requirement is not held to a Test, and the gate takes a successor
+    of any status. So a rule that shipped can leave verification with a draft in
+    its place, and only the warning speaks. When the gate asks for a successor
+    that is done, this test fails and can go.
+    """
+    repo.item("REQ-0001", status="done")
+    repo.item("TASK-0001", status="done", implements=["REQ-0001"])
+    assert gate(repo) == {"REQ-0001": [UNVERIFIED]}
+
+    repo.item("REQ-0002", status="draft", replaces="REQ-0001")
+    repo.item("REQ-0001", status="superseded")
+
+    assert gate(repo) == {}
+    assert main(["trace"]) == 0
+    assert rules(repo, "REQ-0001") == [("withdrawn-early", "warning")]
+
+
 # --- what a branch answers for -----------------------------------------------------
 
 

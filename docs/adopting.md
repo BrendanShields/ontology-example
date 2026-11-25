@@ -397,7 +397,10 @@ outside one. CI and the CODEOWNERS review are the controls.
 - **A Requirement cannot be withdrawn with nothing in its place.** A
   Requirement that reads `superseded` needs one that replaces it. The gate
   accepts a successor of any status, so a draft is enough for it:
-  `onto validate` warns until the successor is done, and does not fail.
+  `onto validate` warns until the successor is done, and does not fail. A
+  superseded Requirement is not held to a Test, so a rule that shipped can be
+  withdrawn this way with no Test and every command exiting 0. Treat the
+  `withdrawn-early` warning as a finding in review.
 - **The Incident gate reads statuses, not what happened.** An Incident that
   `breaks` a Requirement which was never set back from `done` passes
   `gate:ClosedIncidentIsFixed` at once. The Incident playbook asks for the

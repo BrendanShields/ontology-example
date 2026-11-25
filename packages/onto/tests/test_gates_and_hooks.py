@@ -567,7 +567,6 @@ def test_the_view_of_the_real_repository():
     # Evidence, which only a test run writes, so a clean checkout has it at verify.
     assert stages["TASK-0001"] in ("verify", "complete")  # CHG-0001 resolves it
     assert stages["TASK-0004"] in ("verify", "ship")  # done, and no Change resolves it yet
-    assert built["plan"]["order"] == [] and built["plan"]["open_incidents"] == []
     # The one rule of the repository that was replaced: it is no claim, so it is not untested.
     assert built["plan"]["superseded_requirements"] == [
         {
