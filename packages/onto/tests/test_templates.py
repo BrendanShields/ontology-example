@@ -48,10 +48,23 @@ def test_every_skill_agent_and_question_of_this_repository_is_a_template(sync):
         for path in (ROOT / folder).rglob("*")
         if path.is_file()
     ] + [path.relative_to(ROOT).as_posix() for path in (ROOT / "ontology/cq").glob("*.rq")]
+    # A skill a person installed from elsewhere is theirs, and is not scaffolded.
+    here = [rel for rel in here if not rel.startswith(sync.installed_skills())]
 
     assert here
     assert {sync.template_path(rel) for rel in here} <= tree.keys()
     assert not [rel for rel in tree if rel.endswith("test_competency_questions.py")]
+
+
+def test_a_skill_installed_from_elsewhere_is_no_template(sync, tmp_path, monkeypatch):
+    lock = {"version": 2, "skills": {"films": {"source": "someone/films"}}}
+    (tmp_path / sync.SKILLS_LOCK).write_text(json.dumps(lock))
+    assert sync.installed_skills(tmp_path) == (".claude/skills/films/",)
+    assert sync.installed_skills(tmp_path / "nowhere") == ()
+
+    monkeypatch.setattr(sync, "installed_skills", lambda: (".claude/skills/term-gap/",))
+    assert not [rel for rel in sync.sources() if "/term-gap/" in rel]
+    assert [rel for rel in sync.sources() if "/ontology-change/" in rel]
 
 
 def test_the_hooks_template_runs_onto_through_the_placeholder_only(sync):

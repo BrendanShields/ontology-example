@@ -10,8 +10,9 @@ repository gets a copy with two things replaced by placeholders: the namespace
 the ontologies are published under, and the command that runs onto. Nobody
 edits the copy: change the source and run this.
 
-Everything under .claude/ is taken except the names in EXCLUDE, so a new skill,
-agent or command is picked up without a change here.
+Everything under .claude/ is taken except the names in EXCLUDE and the skills
+that skills-lock.json records as installed from elsewhere, so a new skill, agent
+or command of this repository is picked up without a change here.
 """
 
 from __future__ import annotations
@@ -67,13 +68,28 @@ def base_uri() -> str:
     return yaml.safe_load(source)["id"].removesuffix("/ontology/workflow")
 
 
+SKILLS_LOCK = "skills-lock.json"  # written by the `skills` installer for what it installed
+
+
+def installed_skills(root: Path = ROOT) -> tuple[str, ...]:
+    """The skills a person installed here from elsewhere: theirs, and no part of the layer."""
+    try:
+        lock = json.loads((root / SKILLS_LOCK).read_text(encoding="utf-8"))
+        return tuple(f".claude/skills/{name}/" for name in lock.get("skills", {}))
+    except (OSError, ValueError, AttributeError):
+        return ()
+
+
 def sources() -> list[str]:
     found: list[str] = []
+    theirs = installed_skills()
     for source in SOURCES:
         path = ROOT / source
         files = sorted(p for p in path.rglob("*") if p.is_file()) if path.is_dir() else [path]
         for file in files:
             rel = file.relative_to(ROOT).as_posix()
+            if rel.startswith(theirs):
+                continue
             if not any(rel.startswith(name) or name in rel.split("/") for name in EXCLUDE):
                 found.append(rel)
     return found
