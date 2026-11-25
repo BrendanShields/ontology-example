@@ -17,7 +17,9 @@ from dataclasses import dataclass, field
 
 from rdflib import RDF, Graph, Namespace
 
+from . import namespaces
 from .config import Config
+from .failures import missing
 from .graph import WorkGraph
 from .report import ERROR, WARNING, Violation
 from .workspace import Workspace
@@ -28,15 +30,26 @@ _IRI = re.compile(r"(?:https?://|urn:)[^\s,;\"'<>()]*[^\s,;\"'<>().]")
 
 def shapes_graph(cfg: Config) -> Graph:
     shapes = Graph()
-    for path in (cfg.workflow_shacl, *cfg.gate_shapes):
+    if not cfg.workflow_shacl.is_file():
+        raise FileNotFoundError(f"{cfg.rel(cfg.workflow_shacl)} is missing: run `onto gen`")
+    for path in cfg.gate_shapes:
         if not path.is_file():
-            raise FileNotFoundError(f"{cfg.rel(path)} is missing: run `onto gen`")
+            raise missing(
+                "the hand-written graph gates, which `onto gen` does not produce",
+                cfg.rel(path),
+                "run `onto init` to scaffold it, or take it out of `gates` in onto.toml",
+            )
+    for path in (cfg.workflow_shacl, *cfg.gate_shapes):
         shapes.parse(path, format="turtle")
     return shapes
 
 
 def run_shacl(ws: Workspace, graph: WorkGraph) -> list[Violation]:
-    """Validate the graph. Each result becomes one violation on the work item it concerns."""
+    """Validate the graph. Each result becomes one violation on the work item it concerns.
+
+    A gate file or competency question written against another namespace than
+    the workflow ontology's is reported first: its rules would pass in silence.
+    """
     import pyshacl
 
     shapes = shapes_graph(ws.cfg)
@@ -44,7 +57,7 @@ def run_shacl(ws: Workspace, graph: WorkGraph) -> list[Violation]:
 
     slot_names = _slot_names(ws)
     seen: set[tuple] = set()
-    problems: list[Violation] = []
+    problems: list[Violation] = namespaces.problems(ws)
     for result in report.subjects(RDF.type, SH.ValidationResult):
         focus = report.value(result, SH.focusNode)
         path = report.value(result, SH.resultPath)
@@ -257,6 +270,7 @@ def _closure(ws: Workspace, ids: set[str]) -> set[str]:
 
 
 def in_scope(problems: list[Violation], scope: set[str] | None) -> list[Violation]:
+    """The problems a scope answers for. One that is about no work item concerns every scope."""
     if scope is None:
         return problems
-    return [p for p in problems if p.subject in scope]
+    return [p for p in problems if p.subject is None or p.subject in scope]

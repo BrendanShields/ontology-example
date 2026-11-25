@@ -95,7 +95,10 @@ def find_root(start: Path | None = None) -> Path:
     for candidate in (here, *here.parents):
         if (candidate / CONFIG_FILE).is_file():
             return candidate
-    raise ConfigError(f"no {CONFIG_FILE} found in {here} or any parent directory")
+    raise ConfigError(
+        f"no {CONFIG_FILE} found in {here} or any parent directory: "
+        "run `onto init` at the root of the repository to scaffold the ontology layer"
+    )
 
 
 def load_config(root: Path | None = None) -> Config:

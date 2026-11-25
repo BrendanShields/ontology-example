@@ -12,6 +12,7 @@ from pathlib import Path
 
 from . import __version__, report
 from .config import ConfigError
+from .failures import describe
 from .hooks import BLOCK
 
 
@@ -25,7 +26,7 @@ def main(argv: list[str] | None = None) -> int:
         return args.handler(args)
     except (ConfigError, FileNotFoundError, ValueError, KeyError) as exc:
         # Deliberately not exit code 2: a tool that cannot run must not block a session.
-        print(f"onto: {exc.args[0] if exc.args else exc}", file=sys.stderr)
+        print(f"onto: {describe(exc)}", file=sys.stderr)
         return 1
 
 
