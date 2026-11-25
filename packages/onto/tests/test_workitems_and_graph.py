@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import pytest
-from onto import create, slicing
+from onto import create, gates, slicing
 from onto.graph import load_graph
 from onto.report import errors, warnings
 from onto.testing import scratch_repo
@@ -305,19 +305,88 @@ def test_a_task_slice_holds_what_the_task_needs_and_fits_the_budget():
     assert slicing.estimate_tokens(text) < slicing.DEFAULT_BUDGET
 
 
-def test_every_task_s_slice_fits_the_budget():
+def _app_files(ws) -> set[str]:
+    from onto.workitems import repository_files
+
+    return {f for f in repository_files(ws.cfg) if f.startswith("apps/")}
+
+
+# What the branch changed decides which Decisions on paths a Task is given, so the
+# size of a slice depends on the checkout. Each case states it.
+BRANCHES = {
+    "nothing changed": lambda ws: set(),
+    "changes unknown": lambda ws: None,
+    "every file of the app changed": _app_files,
+}
+
+
+@pytest.mark.parametrize("branch", BRANCHES)
+def test_every_task_s_slice_fits_the_budget(branch, monkeypatch):
     ws = Workspace.at()
+    changed = BRANCHES[branch](ws)
+    monkeypatch.setattr(gates, "changed_files", lambda cfg: changed)
     for task in ws.of_class("Task"):
-        _, text = slicing.build_within_budget(ws, task=task.id)
+        built, text = slicing.build_within_budget(ws, task=task.id)
         assert slicing.estimate_tokens(text) < slicing.DEFAULT_BUDGET, task.id
+        # Shortened, never cut: every Decision and established Requirement is still named.
+        full = slicing.build(ws, task=task.id, depth=0)
+        for item in (*full.decisions, *full.established):
+            assert f"- {item.id} " in text, (task.id, item.id)
 
 
 def test_a_slice_that_would_not_fit_drops_the_neighbours():
     ws = Workspace.at()
-    wide, _ = slicing.build_within_budget(ws, task="TASK-0002")
-    narrow, text = slicing.build_within_budget(ws, budget=600, task="TASK-0002")
+    wide, _ = slicing.build_within_budget(ws, task="TASK-0004")
+    narrow, text = slicing.build_within_budget(ws, budget=600, task="TASK-0004")
     assert wide.depth == 1 and wide.neighbours
     assert narrow.depth == 0 and not narrow.neighbours
+
+
+def test_a_slice_still_too_wide_gives_the_established_requirements_by_title(monkeypatch):
+    ws = Workspace.at()
+    monkeypatch.setattr(gates, "changed_files", lambda cfg: set())
+    whole, in_full = slicing.build_within_budget(ws, budget=100_000, task="TASK-0008")
+    built, text = slicing.build_within_budget(ws, budget=2800, task="TASK-0008")
+
+    rule = "- REQ-0004 The call-qa-agent shall compute the `score`"
+    assert not whole.titles_only and rule in in_full
+    assert built.titles_only and not built.neighbours
+    assert rule not in text
+    assert "- REQ-0004 The score is computed from the Findings" in text
+    assert "by title, to fit the budget" in text and "work/<id>.md" in text
+    assert [r.id for r in built.established] == [r.id for r in whole.established]
+    # The Task's own Requirements keep their text: they are what is being built.
+    assert "REQ-0016 [done, risk high] While an `Evaluation` has the `disposition`" in text
+    # A program reading the slice is given everything, whatever the budget.
+    assert "shall compute the `score`" in slicing.render_json(ws, built)
+    assert slicing.estimate_tokens(text) < 2800
+
+
+def test_a_slice_that_cannot_be_made_to_fit_says_so(monkeypatch, capsys):
+    from onto.cli import main
+
+    monkeypatch.delenv("ONTO_ROOT", raising=False)
+    assert main(["slice", "--task", "TASK-0008"]) == 0
+    assert "over the budget" not in capsys.readouterr().err
+
+    assert main(["slice", "--task", "TASK-0008", "--max-tokens", "500"]) == 0
+    printed = capsys.readouterr()
+    assert "tokens, estimated, over the budget of 500)" in printed.err
+    assert "REQ-0016" in printed.out  # still given: the work's own Requirements are never cut
+
+
+def test_a_decision_on_many_files_of_the_work_is_given_by_its_globs(monkeypatch):
+    ws = Workspace.at()
+    package = "apps/call-qa-agent/src/call_qa_agent"
+    monkeypatch.setattr(gates, "changed_files", lambda cfg: {f"{package}/ledger.py"})
+    _, text = slicing.build_within_budget(ws, task="TASK-0009")
+    assert f"Affects {package}/ledger.py." in text  # a few files are named
+
+    monkeypatch.setattr(gates, "changed_files", lambda cfg: _app_files(ws))
+    built, text = slicing.build_within_budget(ws, task="TASK-0009")
+    touched = len(built.affecting["DEC-0009"])
+    assert touched > slicing.FILES_NAMED
+    assert f"Affects {touched} files of this work under {package}/**." in text
 
 
 def test_a_term_slice_and_its_errors():

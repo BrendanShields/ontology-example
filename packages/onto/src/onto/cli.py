@@ -165,7 +165,9 @@ def _slice(args) -> int:
         print(hooks.additional_context("SubagentStart", text))
     else:
         print(text, end="")
-        print(f"(about {slicing.estimate_tokens(text)} tokens, estimated)", file=sys.stderr)
+        size = slicing.estimate_tokens(text)
+        over = f", over the budget of {args.max_tokens}" if size >= args.max_tokens else ""
+        print(f"(about {size} tokens, estimated{over})", file=sys.stderr)
     return 0
 
 

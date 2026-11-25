@@ -26,6 +26,7 @@ from .workitems import repository_files
 from .workspace import WorkItem, Workspace
 
 DEFAULT_BUDGET = 3000  # tokens. The spike's exit criterion for a slice.
+FILES_NAMED = 3  # a Decision that touches more files of the work is given by its globs
 
 
 class SliceError(ValueError):
@@ -49,6 +50,8 @@ class Slice:
     incidents: list[WorkItem] = field(default_factory=list)  # open, and answered by this work
     types_file: str | None = None
     depth: int = 1
+    # The established Requirements are rendered by title, to fit the budget.
+    titles_only: bool = False
 
 
 def estimate_tokens(text: str) -> int:
@@ -263,11 +266,20 @@ def build(
 
 
 def build_within_budget(ws: Workspace, budget: int = DEFAULT_BUDGET, **kwargs) -> tuple[Slice, str]:
-    """Build a slice and render it, dropping the neighbours if it would not fit the budget."""
+    """Build a slice and render it, giving less of what the work does not own until it fits.
+
+    First the neighbours go. Then the established Requirements are given by
+    title: their number grows with the repository, and each is one file away.
+    The work's own Requirements, its terms and the Decisions are never
+    shortened, so a slice of work that is itself too wide stays over the budget.
+    """
     built = build(ws, **kwargs)
     text = render_markdown(ws, built)
-    if estimate_tokens(text) > budget and built.depth > 0:
+    if estimate_tokens(text) >= budget and built.depth > 0:
         built = build(ws, **{**kwargs, "depth": 0})
+        text = render_markdown(ws, built)
+    if estimate_tokens(text) >= budget and built.established:
+        built.titles_only = True
         text = render_markdown(ws, built)
     return built, text
 
@@ -373,14 +385,21 @@ def render_markdown(ws: Workspace, built: Slice) -> str:
             rationale = _first_sentence(decision.meta.get("rationale", ""))
             line = f"- {decision.id} {decision.meta.get('title', '')}. {rationale}"
             if decision.id in built.affecting:
-                on = built.affecting[decision.id] or decision.values("affects")
-                line += f" Affects {', '.join(on)}."
+                globs = ", ".join(decision.values("affects"))
+                files = built.affecting[decision.id]
+                if len(files) > FILES_NAMED:
+                    line += f" Affects {len(files)} files of this work under {globs}."
+                else:
+                    line += f" Affects {', '.join(files) or globs}."
             out.append(line)
         out.append("")
     if built.established:
         out += ["## Requirements already established on these terms (keep them true)"]
+        if built.titles_only:
+            out.append("Each is given by title, to fit the budget: work/<id>.md states the rule.")
         for req in built.established:
-            out.append(f"- {req.id} {_ears(req)}")
+            said = req.meta.get("title", "") if built.titles_only else _ears(req)
+            out.append(f"- {req.id} {said}")
         out.append("")
     if built.types_file:
         types = [t.name for t in (*built.focus, *built.neighbours) if t.kind in ("class", "enum")]
