@@ -11,6 +11,7 @@ onto-check:       ## every ontology gate CI runs, in the order CI runs them
 	$(ONTO) gen --check
 	$(ONTO) validate
 	$(ONTO) check-terms
+	$(ONTO) guard --check-settings
 	$(ONTO) trace --collect
 	$(ONTO) rules
 

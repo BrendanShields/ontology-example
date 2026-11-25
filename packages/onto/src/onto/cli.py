@@ -193,9 +193,16 @@ def _validate(args) -> int:
 
     ws = _workspace()
     only = {ws.cfg.rel(Path(p).resolve()) for p in args.paths} or None
+    loaded = {item.rel for item in ws.items} | {p.file for p in ws.load_problems}
+    for rel in sorted((only or set()) - loaded):
+        # Saying "0 errors" of a file that was never read would be a clean check of nothing.
+        print(f"onto validate: {rel} is not a work item file under work/", file=sys.stderr)
+        return 1
     problems = validate(ws, only)
     if only is None:
-        problems = _glossary_problems(ws) + problems
+        from . import gateconfig
+
+        problems = gateconfig.problems(ws.cfg) + _glossary_problems(ws) + problems
     _emit(problems, args.format)
     if args.format == "text":
         checked = len(only) if only else len(ws.items)
@@ -240,6 +247,9 @@ def _check_terms(args) -> int:
     allowed = 0
     for rel in files:
         text = _read(ws.cfg.root / rel)
+        if text is None and args.paths:
+            print(f"onto check-terms: {rel} cannot be read as text", file=sys.stderr)
+            return 1
         if text is not None:
             problems.extend(terms.check_file(ws, rel, text))
             allowed += terms.suppressed(ws, rel, text)
@@ -318,12 +328,12 @@ def _guard(args) -> int:
 
 
 def _deny_rules(cfg, *, check: bool) -> int:
-    from . import denyrules
+    from . import denyrules, gateconfig
 
     if not check:
         print(denyrules.render(cfg))
         return 0
-    problems = denyrules.missing(cfg)
+    problems = denyrules.missing(cfg) + gateconfig.hooks_missing(cfg)
     _emit(problems, "text")
     print(f"onto guard --check-settings: {report.summary(problems)}")
     return 1 if problems else 0
@@ -429,7 +439,7 @@ def _scope(ws, name: str, *, stop: bool = False):
 
 
 def _trace(args) -> int:
-    from . import changes, evidence, gates, hooks, namespaces
+    from . import changes, evidence, gateconfig, gates, hooks, namespaces
     from .graph import build_graph
 
     ws = _workspace()
@@ -438,7 +448,7 @@ def _trace(args) -> int:
     branch_problems: list = []
     try:
         scope = _scope(ws, args.scope, stop=stop)
-        branch_problems = changes.branch_problems(ws, stop=stop)
+        branch_problems = gateconfig.problems(ws.cfg) + changes.branch_problems(ws, stop=stop)
         # A gate written for another namespace concerns every branch, also one with no work item.
         nothing_to_judge = not branch_problems and not namespaces.problems(ws)
         if scope is not None and not scope and nothing_to_judge:

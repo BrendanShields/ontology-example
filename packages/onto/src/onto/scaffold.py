@@ -37,6 +37,7 @@ GENERATED = "{{generated}}"
 # Template folders have plain names, so that no packaging tool drops them.
 HIDDEN = {"claude": ".claude"}
 SETTINGS = "claude/settings.json"
+SETTINGS_CHECK = "guard --check-settings"  # the gate over .claude/settings.json
 CLAUDE_LAYER = ("claude/", "tools/")  # the synced files that only the Claude Code layer needs
 
 WRITTEN, EXISTS, MERGED, UNCHANGED, SKIPPED, BESIDE = (
@@ -218,18 +219,26 @@ def scaffold(options: Options) -> list[Step]:
     put(f"{cfg.rel(cfg.work_dir)}/README.md", render(static["work-README.md"], tokens))
 
     steps.append(_add_lines(root, ".gitignore", static["gitignore"].decode()))
-    put("onto.mk", render(static["onto.mk"], tokens))
+    put("onto.mk", _for_layer(render(static["onto.mk"], tokens), options, "\n"))
     steps.append(_include_in_makefile(root))
     if options.ci:
         put(
             ".github/workflows/ontology-gates.yml",
-            render(static["ontology-gates.yml"], tokens),
+            _for_layer(render(static["ontology-gates.yml"], tokens), options, "\n\n"),
         )
     if options.claude:
         ours = _replace_in_strings(json.loads(synced[SETTINGS]), ONTO_CMD, options.onto_cmd)
         steps.append(_settings(root, expand_generated(ours, never_edited(cfg))))
         steps.append(_claude_md(root, render(static["CLAUDE.md"], tokens)))
     return steps
+
+
+def _for_layer(data: bytes, options: Options, separator: str) -> bytes:
+    """Without the Claude Code layer there are no settings to check: leave that step out."""
+    if options.claude:
+        return data
+    parts = data.decode().split(separator)
+    return separator.join(part for part in parts if SETTINGS_CHECK not in part).encode()
 
 
 def _appended(current: str, addition: str) -> str:

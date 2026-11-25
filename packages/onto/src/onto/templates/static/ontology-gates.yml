@@ -1,7 +1,10 @@
 # The same gates the hooks run, on everything, where nobody can skip them.
 #
 # Written by `onto init`. Change the Install step to however this repository
-# installs its development dependencies: onto-cli[gen] has to be among them.
+# installs its development dependencies: onto-cli[gen] has to be among them,
+# from a source this runner can reach. A wheel added by an absolute path on one
+# machine is not: `uv sync --locked` fails here on the path in uv.lock. Commit
+# the wheel and add it by a relative path, or install from a git URL or an index.
 # Pin each action to a commit SHA if your organisation requires it.
 name: ontology gates
 
@@ -42,6 +45,9 @@ jobs:
 
       - name: Domain layers use glossary vocabulary
         run: $ONTO check-terms
+
+      - name: Hooks and deny rules are still in the Claude Code settings
+        run: $ONTO guard --check-settings
 
       - name: Tests of the Test items, then traceability and graph gates
         run: $ONTO trace --collect

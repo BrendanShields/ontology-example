@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import json
 import re
+from pathlib import Path
 
 import pytest
 from onto import denyrules, guard, paths
@@ -351,7 +352,10 @@ def test_settings_that_lack_a_derived_rule_fail_the_check(repo, capsys):
     assert "Edit(/work/evidence/**)" in capsys.readouterr().out
 
     wanted = denyrules.rules(repo.ws().cfg)
-    settings = {"permissions": {"deny": [*wanted, "Read(./.env)"]}}
+    # The hooks are checked by the same command (test_gate_config.py): given here as they are.
+    here = Path(__file__).resolve().parents[3]
+    hooks = json.loads((here / ".claude/settings.json").read_text())["hooks"]
+    settings = {"permissions": {"deny": [*wanted, "Read(./.env)"]}, "hooks": hooks}
     repo.write(".claude/settings.json", json.dumps(settings))
     assert main(check) == 0
     capsys.readouterr()
