@@ -12,6 +12,8 @@ rdflib builds the graph and feeds pySHACL; Oxigraph answers the SPARQL.
 from __future__ import annotations
 
 import io
+import re
+import sys
 from functools import cached_property
 from pathlib import Path
 from urllib.parse import quote
@@ -23,6 +25,12 @@ from .workspace import Workspace
 
 PROV = "http://www.w3.org/ns/prov#"
 SKOS = "http://www.w3.org/2004/02/skos/core#"
+
+# What may come before the query form: comments, BASE and PREFIX. Read from the
+# first character on, each of these is what the engine takes it for as well.
+_IRI = r"""<[^<>"{}|^`\\\x00-\x20]*>"""
+_PROLOGUE = re.compile(rf"(?:\s+|\#[^\n\r]*|BASE\s*{_IRI}|PREFIX\s*[^\s:<>#]*:\s*{_IRI})*", re.I)
+_ESCAPE = re.compile(r"\\u([0-9A-Fa-f]{4})|\\U([0-9A-Fa-f]{8})")
 
 
 class WorkGraph:
@@ -87,6 +95,7 @@ class WorkGraph:
         """
         import pyoxigraph
 
+        _refuse_federation(sparql)
         substitutions = {
             pyoxigraph.Variable(name): pyoxigraph.NamedNode(str(self.node(value)))
             for name, value in bindings.items()
@@ -94,6 +103,11 @@ class WorkGraph:
         results = self._store.query(sparql, substitutions=substitutions or None)
         if isinstance(results, pyoxigraph.QueryBoolean):
             return [{"ask": str(bool(results)).lower()}]
+        if isinstance(results, pyoxigraph.QueryTriples):
+            raise ValueError(
+                "only SELECT and ASK queries can be run: a CONSTRUCT or DESCRIBE query "
+                "returns triples, not rows. Rewrite it as a SELECT."
+            )
         variables = [variable.value for variable in results.variables]
         rows = []
         for solution in results:
@@ -107,6 +121,28 @@ class WorkGraph:
 
     def serialize(self, fmt: str = "turtle") -> str:
         return self.rdf.serialize(format=fmt)
+
+
+def _refuse_federation(sparql: str) -> None:
+    """A SERVICE clause would send part of the query, and of the graph, to another host.
+
+    Telling a SERVICE keyword from the same letters in a name, a string or a
+    comment takes the engine's own grammar, and a second reading of it here
+    that differed anywhere would let a clause through. So past the prologue the
+    word is refused wherever it stands, also when spelt with \\u escapes.
+    """
+
+    def decoded(match: re.Match) -> str:
+        code = int(match.group(1) or match.group(2), 16)
+        return chr(code) if code <= sys.maxunicode else match.group(0)
+
+    for text in (sparql, _ESCAPE.sub(decoded, sparql)):
+        if "service" in text[_PROLOGUE.match(text).end() :].lower():
+            raise ValueError(
+                "a query may not contain SERVICE: it would make a request to another host. "
+                "After the PREFIX lines the word is refused wherever it stands, in a name, a "
+                "string or a comment too: rename what carries it."
+            )
 
 
 def build_graph(ws: Workspace) -> WorkGraph:

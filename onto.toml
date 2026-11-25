@@ -30,8 +30,12 @@ schema = "ontology/domains/call-qa.yaml"                # L2
 paths = ["apps/call-qa-agent/**"]                       # the app this context governs
 # The domain layer: only glossary vocabulary may be used or coined here.
 domain_paths = ["apps/call-qa-agent/src/call_qa_agent/domain/**"]
+# Outside the domain layer, but also where bound rules are enforced: `onto rules` reads both.
+write_paths = ["apps/call-qa-agent/src/call_qa_agent/session.py"]
 # Generated from the schema by `onto gen`.
 pydantic = "apps/call-qa-agent/src/call_qa_agent/generated.py"
 json_schema = "apps/call-qa-agent/src/call_qa_agent/schemas/call-qa.schema.json"
 glossary_json = "apps/call-qa-agent/src/call_qa_agent/schemas/call-qa.glossary.json"
 docs = "docs/generated/call-qa.md"                      # a page for people (optional)
+# Written only once the glossary declares a binding.
+bindings_json = "apps/call-qa-agent/src/call_qa_agent/schemas/call-qa.bindings.json"
