@@ -349,3 +349,28 @@ def test_a_branch_whose_base_cannot_be_found_answers_for_everything(repo, capsys
         ("gate:CompleteRequirementIsVerified", "REQ-0001"),
     ]
     assert "no base branch" in capsys.readouterr().out
+
+
+def test_a_run_that_cannot_read_onto_toml_does_not_leave_an_index_that_says_ok(repo, capsys):
+    verified(repo)
+    code, index = verify(repo)
+    assert code == 0 and index["ok"] is True
+
+    config = repo.root / "onto.toml"
+    config.write_text(config.read_text().replace('on_open_ocr = "ask"', 'on_open_ocr = "never"'))
+    code, index = verify(repo)
+
+    assert code == 1 and "on_open_ocr" in capsys.readouterr().err
+    assert index["ok"] is False and index["gates"] == []
+    assert index["reason"] == "ConfigError"
+
+
+def test_an_out_that_is_a_file_is_refused_in_one_line(repo, capsys, tmp_path):
+    taken = tmp_path / "taken"
+    taken.write_text("a file, where a folder was asked for\n")
+
+    assert main(["verify", "--out", str(taken)]) == 1
+
+    said = capsys.readouterr().err
+    assert "--out" in said and "taken" in said and "Traceback" not in said
+    assert taken.read_text() == "a file, where a folder was asked for\n"

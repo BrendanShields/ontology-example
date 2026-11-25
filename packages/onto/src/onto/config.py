@@ -10,6 +10,7 @@ from functools import lru_cache
 from pathlib import Path
 
 CONFIG_FILE = "onto.toml"
+DEFAULT_PROV = "prov"
 GATE_FILES = (".github/CODEOWNERS", ".github/workflows/**")  # default of [guard] gate_files
 
 
@@ -175,7 +176,7 @@ def load_config(root: Path | None = None) -> Config:
         work_dir=work_dir,
         evidence_dir=work_dir / "evidence",
         audit_dir=root / workflow.get("decision_log", ".audit"),
-        prov_dir=root / workflow.get("provenance", "prov"),
+        prov_dir=root / workflow.get("provenance", DEFAULT_PROV),
         base_ref=workflow.get("base_ref", "origin/main"),
         protected=tuple(guard.get("protected", ())),
         gate_files=tuple(guard.get("gate_files", GATE_FILES)),

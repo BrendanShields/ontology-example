@@ -27,7 +27,7 @@ from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
 
-from .config import Config
+from .config import DEFAULT_PROV, Config, ConfigError, find_root
 from .gates import base_commit, branch_scope
 from .workspace import Workspace
 
@@ -41,7 +41,16 @@ RULE_NAME = re.compile(r"[A-Za-z][\w:.-]*")
 
 def run(scope: str, out_dir: Path | None = None) -> int:
     """Run the gates in order, write the index, say where it is. 1 if a gate did not hold."""
-    cfg = Workspace.at().cfg
+    if out_dir is not None and out_dir.exists() and not out_dir.is_dir():
+        raise ValueError(
+            f"--out {out_dir} is a file: name the folder the index and the bundles go in"
+        )
+    try:
+        cfg = Workspace.at().cfg
+        sources = _sources(cfg)
+    except Exception as exc:
+        _retract(scope, out_dir, exc)
+        raise
     out_dir = (out_dir or cfg.prov_dir).resolve()
     index: dict = {
         "schema_version": 1,
@@ -49,7 +58,7 @@ def run(scope: str, out_dir: Path | None = None) -> int:
         "scope": scope,
         "scope_applied": scope,
         "base_ref": cfg.base_ref,
-        "ontology_sources": _sources(cfg),
+        "ontology_sources": sources,
         "generated_files": [],
         "gates": [],
         "trace": None,
@@ -81,6 +90,29 @@ def run(scope: str, out_dir: Path | None = None) -> int:
     )
     print(f"onto verify: {held}. Index: {cfg.rel(target)}")
     return 0 if index["ok"] else 1
+
+
+def _retract(scope: str, out_dir: Path | None, exc: Exception) -> None:
+    """Without a configuration no gate ran: an index from an earlier run must not go on
+    saying that they hold. With no `--out`, only an index that is already there is rewritten,
+    because where a new one belongs is one of the things that could not be read."""
+    if out_dir is None:
+        try:
+            out_dir = find_root() / DEFAULT_PROV
+        except ConfigError:
+            return
+        if not (out_dir / INDEX).is_file():
+            return
+    index = {
+        "schema_version": 1,
+        "ok": False,
+        "scope": scope,
+        "reason": type(exc).__name__,
+        "gates": [],
+        "varies_per_run": {"started_at": _now()},
+    }
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / INDEX).write_text(json.dumps(index, indent=2) + "\n", encoding="utf-8")
 
 
 def _run_gates(cfg: Config, scope: str, out_dir: Path, index: dict) -> None:
