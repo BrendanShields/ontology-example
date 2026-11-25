@@ -84,7 +84,7 @@ def build(ws: Workspace) -> dict:
             "violations": [p.to_dict() for p in (*file_problems, *gate_problems) if p.blocking],
         },
         "ontology": _ontology(ws),
-        "plan": _plan(ws, tasks, in_force),
+        "plan": _plan(ws, tasks, in_force, replaced_by),
     }
 
 
@@ -298,7 +298,9 @@ def _ontology(ws: Workspace) -> dict:
 # --- plan ----------------------------------------------------------------------------
 
 
-def _plan(ws: Workspace, tasks: list[dict], in_force: list[WorkItem]) -> dict:
+def _plan(
+    ws: Workspace, tasks: list[dict], in_force: list[WorkItem], replaced_by: dict[str, list[str]]
+) -> dict:
     superseded_by = {
         target: d.id
         for d in ws.of_class("Decision")
@@ -306,9 +308,6 @@ def _plan(ws: Workspace, tasks: list[dict], in_force: list[WorkItem]) -> dict:
         for target in d.values("supersedes")
     }
     requirements = ws.of_class("Requirement")
-    replaced_by = {
-        target: r.id for r in requirements if r.status in SETTLED for target in r.values("replaces")
-    }
     return {
         "order": _order(tasks),
         "requirements_by_status": {
@@ -342,7 +341,7 @@ def _plan(ws: Workspace, tasks: list[dict], in_force: list[WorkItem]) -> dict:
             {
                 "id": r.id,
                 "title": str(r.meta.get("title", "")),
-                "replaced_by": replaced_by.get(r.id),
+                "replaced_by": replaced_by.get(r.id, []),
             }
             for r in requirements
             if r.status == "superseded"
@@ -352,7 +351,8 @@ def _plan(ws: Workspace, tasks: list[dict], in_force: list[WorkItem]) -> dict:
 
 
 def _open_incidents(ws: Workspace) -> list[WorkItem]:
-    return [i for i in ws.of_class("Incident") if i.status not in SETTLED]
+    # Only `done` closes an Incident, since only then does the gate ask what fixed it.
+    return [i for i in ws.of_class("Incident") if i.status != "done"]
 
 
 def _incident(ws: Workspace, incident: WorkItem, requirements: list[WorkItem]) -> dict:
@@ -418,7 +418,7 @@ def render_text(view: dict) -> str:
         waits = (
             f"waiting on {', '.join(incident['waiting_on'])}"
             if incident["waiting_on"]
-            else "ready to close"
+            else f"names {', '.join(named)}, none of them still open"
             if named
             else "names no Requirement yet"
         )

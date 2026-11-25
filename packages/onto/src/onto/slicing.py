@@ -100,6 +100,21 @@ def decisions_in_force(ws: Workspace, context: str | None = None) -> list[WorkIt
     ]
 
 
+def replaced_requirements(ws: Workspace) -> set[str]:
+    """The Requirements a done Requirement replaces, directly or through the ones between."""
+    replaces = {r.id: r.values("replaces") for r in ws.of_class("Requirement")}
+    reached: set[str] = set()
+    ahead = [
+        old for r in ws.of_class("Requirement") if r.status == "done" for old in replaces[r.id]
+    ]
+    while ahead:
+        old = ahead.pop()
+        if old not in reached:
+            reached.add(old)
+            ahead.extend(replaces.get(old, ()))
+    return reached
+
+
 def decisions_affecting(ws: Workspace, files: set[str] | None) -> dict[str, list[str]]:
     """Decisions in force whose `affects` globs match one of the files: id -> the files matched.
 
@@ -213,7 +228,7 @@ def build(
         if old in ws.by_id and old not in current
     ]
     # What this work replaces is on its way out, whatever its status says today.
-    outgoing = current | {r.id for r in replaced}
+    outgoing = current | {r.id for r in replaced} | replaced_requirements(ws)
     raised_from = {incident for req in requirements for incident in req.values("raised_from")}
     affecting = decisions_affecting(ws, touched_files(ws, task_item, files))
     decisions = [d for d in decisions_in_force(ws, glossary.name) if about(d)]
@@ -240,8 +255,7 @@ def build(
         incidents=[
             i
             for i in ws.of_class("Incident")
-            if i.status not in ("done", "superseded")
-            and (i.id in raised_from or set(i.values("breaks")) & current)
+            if i.status != "done" and (i.id in raised_from or set(i.values("breaks")) & current)
         ],
         types_file=ws.cfg.rel(glossary.context.pydantic) if glossary.context.pydantic else None,
         depth=depth,

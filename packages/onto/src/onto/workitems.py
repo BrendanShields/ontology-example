@@ -120,6 +120,41 @@ def validate_item(ws: Workspace, item: WorkItem) -> list[Violation]:
 
     if item.cls == "Requirement":
         problems.extend(_requirement_problems(item, glossary))
+        if item.id in _earlier_versions(ws, item):
+            problem(
+                "replaces-cycle",
+                "replaces leads back to this Requirement: a Requirement replaces an earlier one",
+                "replaces",
+            )
+        successors = [r for r in ws.of_class("Requirement") if item.id in r.values("replaces")]
+        settled = any(r.status in ("done", "superseded") for r in successors)
+        if item.status == "superseded" and successors and not settled:
+            waiting = ", ".join(f"{r.id} ({r.status})" for r in successors)
+            problem(
+                "withdrawn-early",
+                f"status is superseded, but what replaces it is not done yet: {waiting}. "
+                "Until then no Requirement is in force in its place",
+                "status",
+                severity=WARNING,
+                fix="keep the earlier status until the Requirement that replaces it is done",
+            )
+    if item.cls == "Incident":
+        if item.status == "superseded":
+            problem(
+                "incident-superseded",
+                "status is superseded, which would close the Incident with no Requirement: "
+                "an Incident is closed as done, by the Requirements that fix it",
+                "status",
+                found=item.status,
+                fix="set it done once each Requirement it breaks or that was raised from it "
+                "is done; delete an Incident that was recorded by mistake",
+            )
+        if not item.meta.get("observed_on"):
+            problem(
+                "incident-undated",
+                "observed_on is missing: an Incident says when it was observed",
+                severity=WARNING,
+            )
     if item.cls == "Test":
         for value in item.values("path"):
             file_part = value.split("::", 1)[0]
@@ -148,6 +183,19 @@ def validate_item(ws: Workspace, item: WorkItem) -> list[Violation]:
     if glossary is not None:
         problems.extend(_denied_in_prose(item, glossary))
     return problems
+
+
+def _earlier_versions(ws: Workspace, item: WorkItem) -> set[str]:
+    """Every Requirement reached from this one by following `replaces`."""
+    reached: set[str] = set()
+    ahead = item.values("replaces")
+    while ahead:
+        earlier = ahead.pop()
+        if earlier not in reached:
+            reached.add(earlier)
+            if earlier in ws.by_id:
+                ahead.extend(ws.by_id[earlier].values("replaces"))
+    return reached
 
 
 SKIPPED_FOLDERS = ("node_modules", "__pycache__")

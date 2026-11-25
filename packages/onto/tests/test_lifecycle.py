@@ -86,6 +86,7 @@ def test_onto_new_writes_an_incident_that_validates_and_links(repo, capsys):
         ({"breaks": ["REQ-0404"]}, "dangling-reference"),
         ({"breaks": ["TASK-0001"]}, "dangling-reference"),
         ({"observed_on": "last Tuesday"}, "schema"),
+        ({"status": "superseded"}, "incident-superseded"),
     ],
 )
 def test_an_incident_that_breaks_a_rule_is_refused_and_nothing_is_written(repo, fields, rule):
@@ -308,6 +309,73 @@ def test_a_superseded_requirement_whose_task_is_still_done_is_still_held_to_a_te
 
     repo.item("TASK-0001", status="superseded", implements=["REQ-0001"])
     assert gate(repo) == {"CHG-0001": ["gate:DoneChangeResolvesDoneTasks"]}
+
+
+# --- what validate holds that the gates do not --------------------------------------
+
+
+def rules(repo, subject: str) -> list[tuple[str, str]]:
+    return [(p.rule, p.severity) for p in workitems.validate(repo.ws()) if p.subject == subject]
+
+
+def test_an_incident_is_not_closed_by_calling_it_superseded(repo):
+    """The gate reads only `done`, so `superseded` would close an Incident with no Requirement."""
+    repo.item("REQ-0001", status="in_progress", raised_from="INC-0001")
+    repo.item("TASK-0001", status="in_progress")
+    repo.item("INC-0001", status="superseded", title="Scores went out early")
+    assert gate(repo) == {}
+
+    assert rules(repo, "INC-0001") == [("incident-superseded", "error")]
+    built = view.build(repo.ws())
+    assert [i["id"] for i in built["plan"]["open_incidents"]] == ["INC-0001"]
+    assert "INC-0001 [superseded] Scores went out early: waiting on REQ-0001" in (
+        view.render_text(built)
+    )
+    assert [i.id for i in slicing.build(repo.ws(), task="TASK-0001", files=[]).incidents] == [
+        "INC-0001"
+    ]
+
+    repo.item("INC-0001", status="in_progress")
+    assert rules(repo, "INC-0001") == []
+
+
+def test_an_incident_says_when_it_was_observed(repo, capsys):
+    code = main(["new", "Incident", "title=Scores went out early", "bounded_context=call-qa"])
+
+    assert code == 0  # the ontology does not require the date, so this is a warning
+    assert "incident-undated" in capsys.readouterr().err
+    assert rules(repo, "INC-0001") == [("incident-undated", "warning")]
+
+
+def test_a_requirement_does_not_replace_itself_directly_or_round_a_ring(repo):
+    repo.item("REQ-0001", status="superseded", replaces="REQ-0001")
+    assert gate(repo) == {}  # the gate has no constraint on a ring
+    assert rules(repo, "REQ-0001") == [("replaces-cycle", "error")]
+
+    repo.item("REQ-0001", status="superseded", replaces="REQ-0003")
+    repo.item("REQ-0002", status="superseded", replaces="REQ-0001")
+    repo.item("REQ-0003", status="superseded", replaces="REQ-0002")
+    repo.item("REQ-0004", status="done", replaces="REQ-0003")  # leads into the ring, not in it
+    for member in ("REQ-0001", "REQ-0002", "REQ-0003"):
+        assert rules(repo, member) == [("replaces-cycle", "error")], member
+    assert rules(repo, "REQ-0004") == []
+
+    repo.item("REQ-0001", status="superseded")  # a chain with an end
+    assert [rules(repo, f"REQ-000{n}") for n in (1, 2, 3, 4)] == [[], [], [], []]
+
+
+def test_a_requirement_withdrawn_before_its_successor_is_done_is_a_warning(repo):
+    repo.item("REQ-0001", status="superseded")
+    repo.item("REQ-0002", status="draft", replaces="REQ-0001")
+    assert gate(repo) == {}  # the gate accepts a successor of any status
+
+    assert rules(repo, "REQ-0001") == [("withdrawn-early", "warning")]
+
+    repo.item("REQ-0002", status="done", replaces="REQ-0001")
+    assert rules(repo, "REQ-0001") == []
+    repo.item("REQ-0002", status="superseded", replaces="REQ-0001")  # itself replaced later
+    repo.item("REQ-0003", status="done", replaces="REQ-0002")
+    assert rules(repo, "REQ-0001") == []
 
 
 # --- what a branch answers for -----------------------------------------------------
@@ -590,6 +658,22 @@ def test_a_requirement_being_replaced_is_not_presented_as_established(repo):
     assert "REQ-0001" in [r.id for r in slicing.build(repo.ws(), task="TASK-0001").established]
 
 
+def test_a_requirement_replaced_through_a_chain_is_not_established_for_other_work(repo):
+    repo.item("REQ-0001", status="done")  # replaced, and never marked: the gate does not ask
+    repo.item("REQ-0002", status="superseded", replaces="REQ-0001")
+    repo.item("REQ-0003", status="in_progress", replaces="REQ-0002")
+    repo.item("REQ-0009", status="in_progress")
+    repo.item("TASK-0009", status="in_progress", implements=["REQ-0009"])
+
+    def established() -> list[str]:
+        return [r.id for r in slicing.build(repo.ws(), task="TASK-0009", files=[]).established]
+
+    assert established() == ["REQ-0001"]  # nothing done has replaced it yet
+
+    repo.item("REQ-0003", status="done", replaces="REQ-0002")
+    assert established() == ["REQ-0003"]
+
+
 def test_the_slice_names_the_open_incident_the_work_answers(repo):
     repo.item("REQ-0001", status="in_progress")
     repo.item("REQ-0002", status="in_progress", raised_from="INC-0002")
@@ -635,17 +719,19 @@ def test_the_plan_lists_open_incidents_with_what_they_wait_on(repo):
     assert "INC-0003" not in text
     json.dumps(built)
 
+    # The line says what the gate reads. Whether the Tests now catch what was observed, it cannot.
     repo.item("REQ-0002", status="done", raised_from="INC-0001")
-    assert "INC-0001 [in_progress] Scores went out early: ready to close" in view.render_text(
-        view.build(repo.ws())
-    )
+    assert (
+        "INC-0001 [in_progress] Scores went out early: "
+        "names REQ-0001, REQ-0002, none of them still open"
+    ) in view.render_text(view.build(repo.ws()))
 
 
 def test_a_requirement_shows_what_it_replaces_and_what_it_was_raised_from(repo):
     repo.item("REQ-0001", status="superseded", title="The old rule")
     repo.item("INC-0001")
     repo.item("REQ-0002", status="done", replaces="REQ-0001", raised_from="INC-0001")
-    repo.item("REQ-0003")
+    repo.item("REQ-0003", status="done", replaces="REQ-0001")
     built = view.build(repo.ws())
     rows = {row["id"]: row for row in built["trace"]["requirements"]}
 
@@ -653,10 +739,10 @@ def test_a_requirement_shows_what_it_replaces_and_what_it_was_raised_from(repo):
         "REQ-0001",
         "INC-0001",
     )
-    assert rows["REQ-0001"]["replaced_by"] == ["REQ-0002"]
-    assert (rows["REQ-0003"]["replaces"], rows["REQ-0003"]["replaced_by"]) == (None, [])
+    assert rows["REQ-0001"]["replaced_by"] == ["REQ-0002", "REQ-0003"]
+    assert (rows["REQ-0002"]["replaced_by"], rows["REQ-0003"]["raised_from"]) == ([], None)
     assert built["plan"]["superseded_requirements"] == [
-        {"id": "REQ-0001", "title": "The old rule", "replaced_by": "REQ-0002"}
+        {"id": "REQ-0001", "title": "The old rule", "replaced_by": ["REQ-0002", "REQ-0003"]}
     ]
     assert "REQ-0002 [done] replaces REQ-0001, raised from INC-0001" in view.render_text(built)
 
