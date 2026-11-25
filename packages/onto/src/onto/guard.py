@@ -85,19 +85,27 @@ def decide(ws: Workspace, path: str, tool_input: dict | None = None) -> tuple[st
 
 
 def _approval(ws: Workspace, path: str, tool_input: dict) -> tuple[str, str] | None:
-    """(request id, status) if the edit moves an OntologyChangeRequest to an approved status."""
+    """(request id, status) if the edit leaves an approved OntologyChangeRequest that was not there.
+
+    The file is compared as a whole, before and after. An approval spread over
+    edits that each change one thing (the id away, the status, the id back)
+    still ends in one edit that makes the file an approved request.
+    """
     target = ws.cfg.root / path
     try:
         current = target.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError):
         current = None
-    after = _frontmatter(hooks.text_after(tool_input, current))
-    status = str(after.get("status", ""))
-    if status not in APPROVED or status == _frontmatter(current).get("status"):
-        return None
+    after = _approved_request(ws, hooks.text_after(tool_input, current))
+    return after if after != _approved_request(ws, current) else None
+
+
+def _approved_request(ws: Workspace, text: str | None) -> tuple[str, str] | None:
+    """(id, status) if the text is an OntologyChangeRequest in an approved status."""
+    meta = _frontmatter(text)
+    identifier, status = meta.get("id"), str(meta.get("status", ""))
     # Loading the schema is the slow part, so it comes after everything that can say no.
-    identifier = after.get("id")
-    if not isinstance(identifier, str):
+    if status not in APPROVED or not isinstance(identifier, str):
         return None
     if ws.schema.class_for_id(identifier) != "OntologyChangeRequest":
         return None

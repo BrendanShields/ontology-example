@@ -48,6 +48,8 @@ def text_after(tool_input: dict, current: str | None) -> str | None:
     edits = tool_input.get("edits") if isinstance(tool_input.get("edits"), list) else [tool_input]
     text = current
     for edit in edits:
+        if not isinstance(edit, dict):
+            return None
         old, new = edit.get("old_string"), edit.get("new_string")
         if text is None or not isinstance(old, str) or not isinstance(new, str) or old not in text:
             return None

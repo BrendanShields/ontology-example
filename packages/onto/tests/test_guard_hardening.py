@@ -217,6 +217,65 @@ def test_only_a_request_is_approved_this_way(repo):
     assert decide(repo, requirement, old_string="in_progress", new_string="done") == guard.ALLOW
 
 
+def apply(path, old_string, new_string):
+    """What the Edit tool does once the guard has let the edit through."""
+    path.write_text(path.read_text().replace(old_string, new_string, 1))
+
+
+@pytest.mark.parametrize(
+    ("disguise", "restore"),
+    [
+        (("id: OCR-0001", "id: DEC-9999"), ("id: DEC-9999", "id: OCR-0001")),
+        (("---\nid:", "----\nid:"), ("----\nid:", "---\nid:")),
+    ],
+    ids=["another class's id", "unreadable frontmatter"],
+)
+def test_approval_cannot_be_split_into_edits_that_each_look_harmless(repo, disguise, restore):
+    request = repo.item("OCR-0001", status="draft")
+    approve = ("status: draft", "status: in_progress")
+    asked = []
+    for old, new in (disguise, approve, restore):
+        asked.append(decide(repo, request, old_string=old, new_string=new))
+        apply(request, old, new)
+
+    (item,) = repo.ws().of_class("OntologyChangeRequest")
+    assert (item.id, item.status) == ("OCR-0001", "in_progress")
+    assert guard.ASK in asked  # a person was asked before the request stood approved
+    assert asked[-1] == guard.ASK
+
+
+def test_an_approval_does_not_move_to_another_request_unasked(repo):
+    request = repo.item("OCR-0001", status="in_progress")
+    assert decide(repo, request, old_string="OCR-0001", new_string="OCR-0002") == guard.ASK
+
+
+def test_an_edit_the_tool_could_not_have_sent_is_not_an_error(repo):
+    request = repo.item("OCR-0001", status="draft")
+    assert decide(repo, request, edits=["status: in_progress"]) == guard.ALLOW
+
+
+def test_onto_new_does_not_approve_the_request_it_creates(repo, capsys):
+    request = [
+        "new",
+        "OntologyChangeRequest",
+        "title=Add Calibration",
+        "bounded_context=call-qa",
+        "proposed_term=Calibration",
+        "justification=A requirement needs it.",
+    ]
+    for status in guard.APPROVED:
+        assert main([*request, f"status={status}"]) == 1
+        assert "a person approves" in capsys.readouterr().err
+    assert repo.ws().items == []
+    # With no request in progress the ontology stays shut.
+    assert decide(repo, repo.root / GLOSSARY) == guard.DENY
+
+    assert main([*request, "status=ready"]) == 0
+    assert main(request) == 0
+    assert [item.status for item in repo.ws().items] == ["ready", "draft"]
+    assert decide(repo, repo.root / GLOSSARY) == guard.DENY
+
+
 # --- deny rules --------------------------------------------------------------------
 
 
