@@ -166,7 +166,8 @@ def main(argv: list[str] | None = None) -> int:
                 "--reviewer",
                 type=_identifier,
                 required=True,
-                help="the identifier of the person. It is recorded as given and not checked",
+                help="the identifier of the person. Who it is is not checked: only the "
+                "system's own name is refused",
             )
             command.add_argument(
                 "--outcome", required=True, choices=[outcome.value for outcome in ReviewOutcome]
