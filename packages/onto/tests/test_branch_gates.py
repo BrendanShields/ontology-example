@@ -199,6 +199,26 @@ def test_the_stop_gate_catches_a_source_that_was_not_compiled(repo, monkeypatch,
     assert code == BLOCK and changes.GENERATED in out.err and "generated.py" in out.err
 
 
+def test_the_stop_gate_says_which_glossary_a_shell_command_left_unparsable(
+    repo, monkeypatch, capsys
+):
+    path = repo.root / GLOSSARY
+    path.write_text(path.read_text() + "x: y: z\n")
+
+    code, out = run(*STOP, stdin={"hook_event_name": "Stop"}, monkeypatch=monkeypatch, capsys=capsys)
+
+    # Exit 1 would not hold the session, and a traceback tells the agent nothing it can act on.
+    assert code == BLOCK and "Traceback" not in out.err
+    assert f"{GLOSSARY}: error[{changes.GENERATED}]" in out.err and "cannot be read" in out.err
+    assert f"{GLOSSARY}: error[{changes.REQUESTED}]" in out.err
+
+    # Everywhere else it is one line that names the file, and never exit 2.
+    for command in (["trace"], ["gen", "--check"], ["validate"], ["rules"]):
+        code, out = run(*command, monkeypatch=monkeypatch, capsys=capsys)
+        assert code == 1, command
+        assert "call-qa.yaml cannot be read as YAML (line " in out.err, command
+
+
 def test_a_missing_generator_does_not_block_the_session(repo, monkeypatch, capsys):
     def unavailable():
         raise gen.GeneratorUnavailable("linkml is not installed")

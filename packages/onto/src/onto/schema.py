@@ -9,8 +9,10 @@ from datetime import date, datetime
 from functools import cached_property
 from urllib.parse import urlparse
 
+import yaml
+
 from .config import Config
-from .failures import missing
+from .failures import SourceUnreadable, missing
 
 RECORD_ROOT = "Record"  # every class stored as a file under work/ descends from this
 TERM_CLASS = "Term"  # the bridge to the domain ontologies
@@ -46,7 +48,10 @@ class WorkflowSchema:
                 self.cfg.rel(self.cfg.workflow_schema),
                 "run `onto init` to scaffold it",
             )
-        return SchemaView(str(self.cfg.workflow_schema))
+        try:
+            return SchemaView(str(self.cfg.workflow_schema))
+        except yaml.YAMLError as exc:
+            raise SourceUnreadable(self.cfg.workflow_schema, exc) from exc
 
     # --- namespaces -----------------------------------------------------------
 

@@ -13,6 +13,7 @@ result instead: the difference between the branch and its base.
 from __future__ import annotations
 
 from .config import CONFIG_FILE, Config, matches
+from .failures import SourceUnreadable
 from .gates import base_commit, base_refs, changed_files, has_commits, layer_at_base
 from .guard import APPROVED
 from .report import ERROR, Violation
@@ -105,6 +106,17 @@ def ontology_change_is_requested(ws: Workspace, changed: set[str]) -> list[Viola
     return problems
 
 
+def unreadable(cfg: Config, exc: SourceUnreadable) -> Violation:
+    rel = cfg.rel(exc.path)
+    return Violation(
+        GENERATED,
+        ERROR,
+        f"{rel} cannot be read as YAML{exc.where}, so nothing can be generated from it",
+        file=rel,
+        fix="fix the syntax there, or take the change back",
+    )
+
+
 def generated_matches_source(cfg: Config, changed: set[str]) -> list[Violation]:
     """One violation per generated file that differs from what its source compiles to.
 
@@ -120,6 +132,8 @@ def generated_matches_source(cfg: Config, changed: set[str]) -> list[Violation]:
         results = gen.generate(cfg, check=True)
     except gen.GeneratorUnavailable:
         return []  # CI runs `onto gen --check`: a missing generator must not block a session
+    except SourceUnreadable as exc:
+        return [unreadable(cfg, exc)]
     return [
         Violation(
             GENERATED,

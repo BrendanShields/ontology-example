@@ -12,7 +12,7 @@ from pathlib import Path
 
 from . import __version__, report
 from .config import ConfigError
-from .failures import describe
+from .failures import SourceUnreadable, describe
 from .hooks import BLOCK
 
 
@@ -415,27 +415,39 @@ def _trace(args) -> int:
     event = hooks.read_event() if stop else {}
     scope = _scope(ws, args.scope, stop=stop)
     branch_problems = changes.branch_problems(ws, stop=stop)
-    # A gate written for another namespace concerns every branch, also one with no work item.
-    nothing_to_judge = not branch_problems and not namespaces.problems(ws)
-    if scope is not None and not scope and nothing_to_judge:
+    try:
+        # A gate written for another namespace concerns every branch, also one with no work item.
+        nothing_to_judge = not branch_problems and not namespaces.problems(ws)
+        if scope is not None and not scope and nothing_to_judge:
+            if not stop:
+                print("onto trace: nothing in scope on this branch")
+            return 0
+
+        if args.collect:
+            run = evidence.collect(ws, evidence.tests_for(ws, scope))
+            if not run.ok:
+                print(
+                    f"onto trace: the test run could not complete\n{run.output}", file=sys.stderr
+                )
+                return 1
+
+        graph = build_graph(ws)
+        problems = gates.in_scope(gates.run_shacl(ws, graph), scope) + branch_problems
+        rows = [
+            row
+            for row in gates.traceability(graph)
+            if (scope is None or row.requirement in scope)
+            and (not args.context or row.context == args.context)
+        ]
+    except SourceUnreadable as exc:
         if not stop:
-            print("onto trace: nothing in scope on this branch")
-        return 0
-
-    if args.collect:
-        run = evidence.collect(ws, evidence.tests_for(ws, scope))
-        if not run.ok:
-            print(f"onto trace: the test run could not complete\n{run.output}", file=sys.stderr)
-            return 1
-
-    graph = build_graph(ws)
-    problems = gates.in_scope(gates.run_shacl(ws, graph), scope) + branch_problems
-    rows = [
-        row
-        for row in gates.traceability(graph)
-        if (scope is None or row.requirement in scope)
-        and (not args.context or row.context == args.context)
-    ]
+            raise
+        # No graph can be built from it. The session can put that right, so it is told
+        # which file, along with what the branch gates found before the graph was needed.
+        unreadable = changes.unreadable(ws.cfg, exc)
+        if unreadable not in branch_problems:
+            branch_problems.append(unreadable)
+        problems, rows = list(branch_problems), []
 
     if args.format == "json":
         import json

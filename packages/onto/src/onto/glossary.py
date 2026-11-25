@@ -12,8 +12,10 @@ import re
 from dataclasses import dataclass
 from functools import cached_property
 
+import yaml
+
 from .config import Context
-from .failures import missing
+from .failures import SourceUnreadable, missing
 from .report import ERROR, Violation
 
 DEFAULT_CLASSIFICATION = "internal"
@@ -102,7 +104,10 @@ class Glossary:
                 str(self.context.schema),
                 f"write it, or correct `schema` under [contexts.{self.name}] in onto.toml",
             )
-        return SchemaView(str(self.context.schema))
+        try:
+            return SchemaView(str(self.context.schema))
+        except yaml.YAMLError as exc:
+            raise SourceUnreadable(self.context.schema, exc) from exc
 
     @cached_property
     def namespace(self) -> str:
