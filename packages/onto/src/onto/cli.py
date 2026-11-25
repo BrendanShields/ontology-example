@@ -313,12 +313,22 @@ def _deny_rules(cfg, *, check: bool) -> int:
 def _build(args) -> int:
     from rdflib import RDF
 
+    from . import guard
     from .graph import build_graph
 
     ws = _workspace()
+    if args.out:
+        # `onto` runs without a permission prompt, so it must not be a way round the guard.
+        out = Path(args.out).resolve()
+        decision, reason = guard.decide(ws, str(out))
+        if decision != guard.ALLOW or reason:
+            raise ValueError(
+                f"--out {ws.cfg.rel(out)} is a file the guard protects, and the graph "
+                "is not written over it: name another file"
+            )
     graph = build_graph(ws)
     if args.out:
-        Path(args.out).write_text(graph.serialize(args.format), encoding="utf-8")
+        out.write_text(graph.serialize(args.format), encoding="utf-8")
     counts: dict[str, int] = {}
     for item in ws.items:
         if item.cls:

@@ -270,6 +270,36 @@ def test_an_edit_the_guard_cannot_read_is_put_to_a_person(repo, monkeypatch, cap
     assert decide(repo, repo.root / GENERATED, edits=["x"]) == guard.DENY
 
 
+@pytest.mark.parametrize(
+    "target",
+    [
+        GENERATED,
+        "work/evidence/EVD-0001.md",
+        GLOSSARY,
+        "onto.toml",
+        ".claude/settings.json",
+        ".github/workflows/ontology-gates.yml",
+    ],
+)
+def test_build_does_not_write_the_graph_over_a_guarded_file(repo, capsys, target):
+    repo.item("OCR-0001", status="in_progress")  # even with a request open
+    path = repo.root / target
+    before = path.read_bytes() if path.is_file() else None
+
+    assert main(["build", "--out", str(path)]) == 1
+
+    said = capsys.readouterr().err
+    assert "--out" in said and target in said and "Traceback" not in said
+    assert (path.read_bytes() if path.is_file() else None) == before
+
+
+def test_build_writes_the_graph_anywhere_else(repo, capsys, tmp_path, monkeypatch):
+    assert main(["build", "--out", str(tmp_path / "graph.ttl")]) == 0
+    monkeypatch.chdir(repo.root)
+    assert main(["build", "--out", "graph.ttl"]) == 0
+    assert (repo.root / "graph.ttl").read_text() == (tmp_path / "graph.ttl").read_text()
+
+
 def test_onto_new_does_not_approve_the_request_it_creates(repo, capsys):
     request = [
         "new",
