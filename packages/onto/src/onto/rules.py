@@ -368,7 +368,7 @@ def _unbound(ctx: Context, schema: str, term: Term, where: str, glossary: Glossa
             f"write {accepted}, or name the file that already does in `write_paths` of "
             f"[contexts.{ctx.name}] in onto.toml. If the software no longer does this, withdraw "
             f"the binding: `onto ocr new --context {ctx.name} --term {term.name} "
-            '--justification "..."`'
+            f'--title "Withdraw the binding on {term.name}" --justification "..."`'
         ),
     )
 

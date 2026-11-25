@@ -101,6 +101,19 @@ def find_root(start: Path | None = None) -> Path:
     raise ConfigError(f"no {CONFIG_FILE} found in {here} or any parent directory")
 
 
+def _globs(path: Path, context: str, body: dict, key: str) -> tuple[str, ...]:
+    """A list of globs under the repository. A bare string would be read one character
+    at a time, and its `/` would send a scan across the whole filesystem."""
+    value = body.get(key, [])
+    where = f"{path}: [contexts.{context}] {key}"
+    if not isinstance(value, list) or not all(isinstance(glob, str) for glob in value):
+        raise ConfigError(f'{where} must be a list of globs, such as ["apps/<app>/**"]')
+    for glob in value:
+        if glob.startswith("/") or ".." in glob.split("/"):
+            raise ConfigError(f"{where} must stay inside the repository, and {glob!r} does not")
+    return tuple(value)
+
+
 def load_config(root: Path | None = None) -> Config:
     root = (root or find_root()).resolve()
     path = root / CONFIG_FILE
@@ -122,12 +135,12 @@ def load_config(root: Path | None = None) -> Config:
         contexts[name] = Context(
             name=name,
             schema=root / body["schema"],
-            paths=tuple(body.get("paths", ())),
-            domain_paths=tuple(body.get("domain_paths", ())),
+            paths=_globs(path, name, body, "paths"),
+            domain_paths=_globs(path, name, body, "domain_paths"),
             pydantic=root / body["pydantic"] if "pydantic" in body else None,
             json_schema=root / body["json_schema"] if "json_schema" in body else None,
             glossary_json=root / body["glossary_json"] if "glossary_json" in body else None,
-            write_paths=tuple(body.get("write_paths", ())),
+            write_paths=_globs(path, name, body, "write_paths"),
             bindings_json=root / body["bindings_json"] if "bindings_json" in body else None,
         )
 

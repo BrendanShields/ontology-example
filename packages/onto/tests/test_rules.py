@@ -207,6 +207,7 @@ def test_a_rule_nothing_implements_is_unbound(repo, capsys):
     assert "Looked in 2 file(s) of apps/shop/src/shop/domain/**, apps/shop/src/shop/till.py" in text
     assert "fix: write a function that enforces the rule and reports it as" in text
     assert "onto ocr new --context shop --term RefusalRule.OVER_LIMIT" in text
+    assert '--title "Withdraw the binding on RefusalRule.OVER_LIMIT"' in text
 
 
 @pytest.mark.parametrize(
@@ -511,3 +512,29 @@ def test_a_binding_annotation_the_tooling_cannot_act_on_is_an_error(
     assert found[0]["file"] == "ontology/domains/shop.yaml"
     if hint:
         assert hint in found[0].get("allowed", []) + found[0].get("suggestions", [])
+
+
+# --- the configuration ---------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "key, value, reason",
+    [
+        ("write_paths", TILL, "a list of globs"),
+        ("domain_paths", "apps/shop/src/shop/domain/**", "a list of globs"),
+        ("paths", "apps/shop/**", "a list of globs"),
+        ("write_paths", 3, "a list of globs"),
+        ("write_paths", [3], "a list of globs"),
+        ("write_paths", ["/etc/**"], "inside the repository"),
+        ("write_paths", ["../**"], "inside the repository"),
+        ("domain_paths", ["apps/shop/../../../**"], "inside the repository"),
+    ],
+)
+def test_a_path_list_that_would_send_the_scan_astray_is_a_config_error(
+    repo, capsys, key, value, reason
+):
+    shop(repo, **{key: value})
+    for command in (["rules"], ["gen", "--check"]):
+        assert main(command) == 1
+        message = capsys.readouterr().err
+        assert f"[contexts.shop] {key}" in message and reason in message
