@@ -118,6 +118,11 @@ What to know before relying on it:
   another (`DEC-0012`). A live model gives a different evaluation each time, so a
   second `--stage` of the same call is refused. A withheld evaluation cannot be
   replaced: that would take a change to the ontology.
+- **Every guarantee is per ledger file.** One evaluation per call and scorecard,
+  and PUBLISHED and WITHHELD being final, hold within the file a command is
+  given. `--stage` creates any path it is given, and a second file starts from
+  nothing: an evaluation withheld on one can be staged, reviewed and published
+  on another. Use one ledger, and protect its path.
 - **A reviewer is whatever identifier you pass.** Nothing checks who it is. The
   one name that is refused is `call-qa-agent`, which the ledger writes as the
   actor of a change no person made, so that the audit trail can tell a person's
@@ -130,7 +135,8 @@ What to know before relying on it:
   and may not hold on a network file system.
 - **One bad line stops every call on the file.** A command that cannot read a
   line exits 2 and names the line by its number, for every call on that ledger,
-  until a person has dealt with it. There is no repair command. A last line
+  until a person has dealt with it. For bytes that are not UTF-8 the number is
+  that of the line the read had reached, which is the bad one or shortly before it. There is no repair command. A last line
   with no line ending is what a write that was cut short leaves: nothing is
   ever written after it, and removing that one line is the recovery, because
   the command it came from did not finish and can be given again. An empty

@@ -113,6 +113,7 @@ MUTANTS = [
     Mutant("returned-evaluation-rescored", "agent.py", _EVALUATION_RETURNED, _EVALUATION_RETURNED + ".model_copy(update={'score': 0})", "loop", "L6"),
     Mutant("staged-as-published", _PUBLICATION, "        PublicationState.STAGED,\n        records,", "        PublicationState.PUBLISHED,\n        records,", "ledger", "P1"),
     Mutant("same-disposition-taken-for-the-same-evaluation", _LEDGER, _SAME_EVALUATION, "found.disposition.value == evaluation.disposition", "ledger", "P2"),
+    Mutant("digest-leaves-out-the-findings", _LEDGER, 'evaluation.model_dump(mode="json")', 'evaluation.model_dump(mode="json", exclude={"findings"})', "ledger", "P2"),
     Mutant("published-without-a-review", _PUBLICATION, _UNLESS_FINAL, "if False:", "ledger", "P3"),
     Mutant("review-required-misnamed", _PUBLICATION, "rejection_rule=RejectionRule.REVIEW_REQUIRED", "rejection_rule=RejectionRule.MISSING_FINDING", "ledger", "P4"),
     Mutant("refusal-of-a-review-names-a-rule", _PUBLICATION, "it stands without a Review\"\n        )", "it stands without a Review\",\n            [Rejection(rejection_rule=RejectionRule.MISSING_FINDING, detail='d')],\n        )", "ledger", "P4"),

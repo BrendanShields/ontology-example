@@ -16,12 +16,14 @@ from pathlib import Path
 
 import pytest
 from call_qa_agent import cli
+from call_qa_agent.domain import scoring
 from call_qa_agent.domain.publication import Refused
 from call_qa_agent.generated import AuditRecord, PublicationState, Review, ReviewOutcome
-from call_qa_agent.ledger import SYSTEM, Corrupt, Ledger
+from call_qa_agent.ledger import SYSTEM, Corrupt, Ledger, digest
 from pydantic import ValidationError
 
-from .test_publication import CRITICAL_FAILURE, NOTHING_APPLIED, STANDS
+from ..conftest import finding
+from .test_publication import CALL, CRITICAL_FAILURE, NOTHING_APPLIED, SCORECARD, STANDS
 
 DATA = Path(__file__).resolve().parents[2] / "data"
 CARD = "retail-banking-v1"
@@ -265,6 +267,33 @@ class TestAnotherEvaluation:
 
         assert path.read_text(encoding="utf-8") == before
 
+    def test_an_evaluation_that_differs_in_one_finding_alone_is_another(self, path):
+        # The same outcome for each Criterion, so the same score, evaluation_outcome and
+        # disposition. One Finding cites another Utterance.
+        twin = scoring.conclude(
+            CALL, SCORECARD, [finding("c0", "NOT_MET", [2]), finding("c1", "MET", [2])]
+        )
+        alike = ("call", "scorecard", "score", "evaluation_outcome", "disposition")
+        assert all(getattr(twin, name) == getattr(CRITICAL_FAILURE, name) for name in alike)
+        ledger = Ledger(path, at_noon)
+        ledger.stage(CRITICAL_FAILURE)
+        ledger.review(*KEY, "QA-0007", ReviewOutcome.CONFIRMED)
+        before = path.read_text(encoding="utf-8")
+
+        assert digest(twin) != ledger.entry(*KEY).sha256
+        with pytest.raises(Refused):  # the Review was made of the first, not of this one
+            ledger.stage(twin)
+        assert path.read_text(encoding="utf-8") == before
+
+    @pytest.mark.parametrize("name", ["call", "scorecard"])
+    def test_an_evaluation_no_command_could_name_again_is_not_staged(self, path, name):
+        unreachable = STANDS.model_copy(update={name: getattr(STANDS, name) + "\n"})
+
+        with pytest.raises(Refused):
+            Ledger(path, at_noon).stage(unreachable)
+
+        assert not path.exists()
+
     def test_a_review_of_the_first_does_not_publish_a_second(self, path):
         ledger = Ledger(path, at_noon)
         ledger.stage(CRITICAL_FAILURE)
@@ -383,6 +412,10 @@ class TestALedgerNobodyWrote:
             "withheld by nobody",
             "a Review of a Call that is not there",
             "a Review by the system",
+            "overturned and published in one line",
+            "overturned with no AuditRecord",
+            "withheld at another time than the Review",
+            "withheld by another than the reviewer",
             "not JSON",
         ],
     )
@@ -396,6 +429,7 @@ class TestALedgerNobodyWrote:
             "review_outcome": "OVERTURNED",
             "reviewed_at": "2026-11-02T13:00:00Z",
         }
+        withheld = {**record, "publication_state": "WITHHELD", "actor": "QA-0007"}
         line = {
             "published without a Review": {
                 "audit_record": {**record, "publication_state": "PUBLISHED"}
@@ -408,6 +442,19 @@ class TestALedgerNobodyWrote:
             "a Review by the system": {
                 "review": {**review, "reviewer": SYSTEM, "review_outcome": "CONFIRMED"}
             },
+            "overturned and published in one line": {
+                "review": review,
+                "audit_record": {**record, "publication_state": "PUBLISHED", "actor": "QA-0007"},
+            },
+            "overturned with no AuditRecord": {"review": review},
+            "withheld at another time than the Review": {
+                "review": review,
+                "audit_record": {**withheld, "recorded_at": "2026-11-02T14:00:00Z"},
+            },
+            "withheld by another than the reviewer": {
+                "review": review,
+                "audit_record": {**withheld, "actor": "QA-0008"},
+            },
             "not JSON": None,
         }[claim]
         with path.open("a", encoding="utf-8") as ledger:
@@ -415,6 +462,51 @@ class TestALedgerNobodyWrote:
 
         with pytest.raises(Corrupt, match="line 2"):
             Ledger(path).entries()
+
+    def test_the_line_an_overturning_review_does_write_is_read(self, path):
+        # The control for the cases above: the same line, as the ledger writes it.
+        ledger = Ledger(path, at_noon)
+        ledger.stage(CRITICAL_FAILURE)
+        ledger.review(*KEY, "QA-0007", ReviewOutcome.OVERTURNED)
+
+        assert Ledger(path).entry(*KEY).publication_state is PublicationState.WITHHELD
+
+    @pytest.mark.parametrize("outcome", ["CONFIRMED", "OVERTURNED"])
+    def test_a_review_line_on_an_evaluation_that_stands_is_corrupt(self, path, outcome):
+        """REQ-0020 on the read path: the disposition staged decides what a Review may do."""
+        Ledger(path, at_noon).stage(STANDS)
+        (staged,) = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+        record = staged["audit_record"]
+        review = {
+            "call": record["call"],
+            "scorecard": record["scorecard"],
+            "reviewer": "QA-0007",
+            "review_outcome": outcome,
+            "reviewed_at": "2026-11-02T13:00:00Z",
+        }
+        line = {"review": review}
+        if outcome == "OVERTURNED":
+            line["audit_record"] = {
+                **record,
+                "publication_state": "WITHHELD",
+                "actor": "QA-0007",
+                "recorded_at": review["reviewed_at"],
+            }
+        with path.open("a", encoding="utf-8") as ledger:
+            ledger.write(json.dumps(line) + "\n")
+
+        with pytest.raises(Corrupt, match="line 2"):
+            Ledger(path).entries()
+
+    def test_a_ledger_that_is_not_text_is_corrupt_and_the_line_is_named(self, path):
+        self.lines(path)
+        with path.open("ab") as ledger:
+            ledger.write(b"\xff\xfe\n")
+
+        with pytest.raises(Corrupt, match=r"ledger\.jsonl: line 1, or one soon after it"):
+            Ledger(path).entries()
+        with pytest.raises(Corrupt):
+            Ledger(path).publish(*KEY)
 
     @pytest.mark.parametrize("cut", ["a line cut short", "a whole line with no end"])
     def test_a_last_line_with_no_end_is_corrupt_and_nothing_is_joined_to_it(self, path, cut):

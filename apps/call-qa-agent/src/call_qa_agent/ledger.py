@@ -128,6 +128,12 @@ class Ledger:
         Raises `publication.Refused` if another Evaluation of the same Call against the
         same Scorecard is (DEC-0012).
         """
+        if not (is_identifier(evaluation.call) and is_identifier(evaluation.scorecard)):
+            # The other commands take identifiers only, so no command could reach it again.
+            raise publication.Refused(
+                "the Call and the Scorecard of a staged Evaluation are named by identifiers "
+                "with no spaces, line ends included"
+            )
         with self._alone(create=True) as (entries, ledger):
             found = entries.get((evaluation.call, evaluation.scorecard))
             if found is not None and found.sha256 == digest(evaluation):
@@ -225,7 +231,7 @@ class Ledger:
 
     def _read(self, lines: Iterable[str]) -> dict[tuple[str, str], Entry]:
         entries: dict[tuple[str, str], Entry] = {}
-        for number, text in enumerate(lines, start=1):
+        for number, text in enumerate(_decoded(self.path, lines), start=1):
             if not text.endswith("\n"):
                 raise Corrupt(
                     f"{self.path}: line {number} has no end: the write of it was cut short"
@@ -241,6 +247,17 @@ class Ledger:
                     f"{self.path}: line {number} is not one this ledger could hold"
                 ) from None
         return entries
+
+
+def _decoded(path: Path, lines: Iterable[str]) -> Iterator[str]:
+    """The lines, with bytes that are not UTF-8 reported as the other unreadable lines are."""
+    read = 0
+    try:
+        for text in lines:
+            read += 1
+            yield text
+    except UnicodeDecodeError:
+        raise Corrupt(f"{path}: line {read + 1}, or one soon after it, is not UTF-8 text") from None
 
 
 def _staged(entries: dict[tuple[str, str], Entry], call: str, scorecard: str) -> Entry:

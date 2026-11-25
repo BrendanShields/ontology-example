@@ -606,13 +606,16 @@ def check_loop(max_turns: int = 4, observe: Callable[[Run], None] | None = None)
 LEDGER_CARD = make_scorecard([1, 1], [True, False])
 
 
-def _concluded(*outcomes: str) -> Evaluation:
+def _concluded(*outcomes: str, cited: int = 1) -> Evaluation:
     return scoring.conclude(
         CALL,
         LEDGER_CARD,
         [
             Finding(
-                criterion=f"c{index}", finding_outcome=outcome, cited_utterances=[1], rationale="r"
+                criterion=f"c{index}",
+                finding_outcome=outcome,
+                cited_utterances=[cited],
+                rationale="r",
             )
             for index, outcome in enumerate(outcomes)
         ],
@@ -621,12 +624,17 @@ def _concluded(*outcomes: str) -> Evaluation:
 
 # Four Evaluations of the one Call against the one Scorecard, two of each disposition.
 # NEEDS_REVIEW has two causes and both are here: a failed critical Criterion, and nothing applied.
-EVALUATIONS = {
-    "stands": _concluded(MET, MET),
-    "stands-too": _concluded(MET, NOT_MET),
-    "critical-failure": _concluded(NOT_MET, MET),
-    "nothing-applied": _concluded(NOT_APPLICABLE, NOT_APPLICABLE),
+_OUTCOMES = {
+    "stands": (MET, MET),
+    "stands-too": (MET, NOT_MET),
+    "critical-failure": (NOT_MET, MET),
+    "nothing-applied": (NOT_APPLICABLE, NOT_APPLICABLE),
 }
+EVALUATIONS = {name: _concluded(*outcomes) for name, outcomes in _OUTCOMES.items()}
+# For each, another Evaluation with the same outcome for every Criterion, the same score and
+# the same disposition, whose Findings cite another Utterance. It is not a command of the
+# alphabet: it is offered once after each staging, and has to be refused (DEC-0012).
+TWINS = {name: _concluded(*outcomes, cited=2) for name, outcomes in _OUTCOMES.items()}
 REVIEWERS = ("QA-1", "QA-2")
 STAGE, REVIEW, PUBLISH = "stage", "review", "publish"
 # The alphabet: every command there is, on the one Call and Scorecard.
@@ -783,7 +791,9 @@ def check_ledger(max_commands: int = 4, observe: Callable | None = None) -> dict
     each disposition, NEEDS_REVIEW by each of its two causes), two reviewers,
     and the nine commands of COMMANDS: stage each Evaluation, each reviewer's
     Review with each outcome, and publish. Every command is also given a
-    second time straight after the first.
+    second time straight after the first. After each staging, the twin of the
+    Evaluation staged is offered as well: the same outcomes, score and
+    disposition, with Findings that cite another Utterance.
 
     A sequence that starts like another shares its first commands with it:
     the file is put back as it was before each next command is tried.
@@ -807,6 +817,8 @@ def check_ledger(max_commands: int = 4, observe: Callable | None = None) -> dict
                 got = give(path, clock, command, script)
                 commands += 1
                 _check_answer(script, command, known, before, want, review_required, then, got)
+                if command[0] == STAGE and got.answer == RECORDED:
+                    _check_twin(path, clock, script, command)
                 if observe is not None:
                     observe(before, command, got)
                 after = path.read_text(encoding="utf-8")
@@ -821,6 +833,25 @@ def check_ledger(max_commands: int = 4, observe: Callable | None = None) -> dict
 
                 frontier.append(((*script, command), then, after))
     return {"sequences": sequences, "commands": commands}
+
+
+def _check_twin(path: Path, clock: Clock, script: tuple, command: tuple) -> None:
+    """P2 for an Evaluation that differs from the one just staged in a Finding alone."""
+    case = {"commands": [_shown(c) for c in (*script, command)], "twin": True}
+    staged, twin = EVALUATIONS[command[1]], TWINS[command[1]]
+    alike = ("call", "scorecard", "score", "evaluation_outcome", "disposition")
+    assert all(getattr(staged, name) == getattr(twin, name) for name in alike) and staged != twin
+    held = path.read_text(encoding="utf-8")
+    try:
+        ledger_module.Ledger(path, clock).stage(twin)
+        answer = RECORDED
+    except publication.Refused:
+        answer = REFUSED
+    try:  # as after every command: what was written has to read back
+        ledger_module.Ledger(path, clock).entry(*KEY)
+    except ledger_module.Corrupt:
+        raise PropertyViolation("P13", {**case, "read": "Corrupt"}) from None
+    require(answer == REFUSED and path.read_text(encoding="utf-8") == held, "P2", **case)
 
 
 def _check_answer(
