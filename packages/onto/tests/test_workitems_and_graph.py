@@ -334,12 +334,20 @@ def test_every_task_s_slice_fits_the_budget(branch, monkeypatch):
             assert f"- {item.id} " in text, (task.id, item.id)
 
 
-def test_a_slice_that_would_not_fit_drops_the_neighbours():
+@pytest.mark.parametrize("branch", BRANCHES)
+def test_a_slice_that_would_not_fit_drops_the_neighbours(branch, monkeypatch):
+    # The budget is one token under what the whole slice takes, whatever the branch
+    # changed: a fixed number held only while the checkout differed from its base.
     ws = Workspace.at()
-    wide, _ = slicing.build_within_budget(ws, task="TASK-0004")
-    narrow, text = slicing.build_within_budget(ws, budget=600, task="TASK-0004")
+    changed = BRANCHES[branch](ws)
+    monkeypatch.setattr(gates, "changed_files", lambda cfg: changed)
+    wide, whole = slicing.build_within_budget(ws, task="TASK-0004")
+    narrow, text = slicing.build_within_budget(
+        ws, budget=slicing.estimate_tokens(whole), task="TASK-0004"
+    )
     assert wide.depth == 1 and wide.neighbours
     assert narrow.depth == 0 and not narrow.neighbours
+    assert slicing.estimate_tokens(text) < slicing.estimate_tokens(whole)
 
 
 def test_a_slice_still_too_wide_gives_the_established_requirements_by_title(monkeypatch):
