@@ -420,6 +420,20 @@ def test_moving_a_producing_function_is_drift_until_the_manifest_is_regenerated(
     assert main(["gen", "--check"]) == 0
 
 
+def test_no_manifest_is_written_from_a_file_that_does_not_parse(repo, capsys):
+    shop(repo)
+    generate(repo)
+    before = (repo.root / MANIFEST).read_text(encoding="utf-8")
+    repo.write(ORDERS, CHECKS + "def broken(:\n")
+
+    # A manifest written now would say that nothing in orders.py produces a rule.
+    for command in (["gen"], ["gen", "--check"]):
+        assert main(command) == 1
+        said = capsys.readouterr().err
+        assert MANIFEST in said and ORDERS in said and "could not be parsed" in said
+    assert (repo.root / MANIFEST).read_text(encoding="utf-8") == before
+
+
 def test_the_manifest_goes_when_the_last_binding_does(repo):
     shop(repo)
     generate(repo)

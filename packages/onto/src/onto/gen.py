@@ -160,7 +160,14 @@ def _bindings_json(cfg: Config, ctx: Context) -> Callable[[str, str], str | None
     def render(source: str, notice: str) -> str | None:
         from . import rules
 
-        bindings, _ = rules.scan(cfg, ctx, Glossary(ctx))
+        bindings, problems = rules.scan(cfg, ctx, Glossary(ctx))
+        unreadable = [p.file for p in problems if p.rule == "unreadable"]
+        if unreadable:
+            # A manifest written now would say that nothing in these files produces a term.
+            raise ValueError(
+                f"{cfg.rel(ctx.bindings_json)} is not written: {', '.join(unreadable)} could "
+                "not be parsed. Fix the syntax error and run `onto gen` again"
+            )
         if not bindings:
             return None
         return json.dumps({"$comment": notice, **rules.manifest(ctx, bindings)}, indent=2) + "\n"
