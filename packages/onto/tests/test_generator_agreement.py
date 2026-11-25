@@ -6,7 +6,7 @@ same data would be checked with. For a table of made-up instances derived from
 the schema (valid, a value outside an enum, a required slot left out, an
 integer out of range, a required list left empty) the two must agree on
 accept or reject. Where they do not, the disagreement is named in
-KNOWN_DISAGREEMENTS, and the test fails once it is gone.
+KNOWN_DISAGREEMENTS, and the test fails once it is gone. Today there is none.
 
 Every instance here is synthetic. No Call is loaded.
 """
@@ -24,6 +24,7 @@ from rdflib import RDF, BNode, Graph, Literal, URIRef
 
 CONTEXT = "call-qa"
 INTEGER = URIRef("http://www.w3.org/2001/XMLSchema#integer")
+DATETIME = URIRef("http://www.w3.org/2001/XMLSchema#dateTime")
 
 # One valid instance of every concrete class. A slot whose range is a class
 # with an identifier holds that identifier, as the Pydantic types expect.
@@ -57,18 +58,25 @@ SAMPLES["Evaluation"] = {
     "evaluation_outcome": "PASS",
     "disposition": "FINAL",
 }
+SAMPLES["Review"] = {
+    "call": "CALL-0001",
+    "scorecard": "example-v1",
+    "reviewer": "REVIEWER-0001",
+    "review_outcome": "CONFIRMED",
+    "reviewed_at": "2026-01-15T09:30:00",
+}
+SAMPLES["AuditRecord"] = {
+    "call": "CALL-0001",
+    "scorecard": "example-v1",
+    "publication_state": "STAGED",
+    "actor": "REVIEWER-0001",
+    "recorded_at": "2026-01-15T09:30:00",
+}
 
 # case id -> why the two generators disagree on it today. Each entry is checked
 # to still be a disagreement: when the schema or a generator changes so that the
 # two agree, the case fails as an unexpected pass and the entry has to go.
-KNOWN_DISAGREEMENTS = {
-    "Evaluation: findings left empty": (
-        "`findings` is required without a minimum_cardinality. gen-shacl turns required into "
-        "sh:minCount 1, so SHACL rejects an Evaluation with no Findings. gen-pydantic turns it "
-        "into a list that must be present and may be empty, so Pydantic accepts it. At runtime "
-        "the MISSING_FINDING rule covers the gap."
-    ),
-}
+KNOWN_DISAGREEMENTS: dict[str, str] = {}
 
 
 @cache
@@ -175,6 +183,8 @@ def _object(graph: Graph, view, slot, value, done: set):
         return Literal(value)
     if isinstance(value, int):
         return Literal(value, datatype=INTEGER)
+    if slot.range == "datetime":
+        return Literal(str(value), datatype=DATETIME)
     return Literal(str(value))
 
 
