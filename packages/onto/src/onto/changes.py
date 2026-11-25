@@ -134,6 +134,18 @@ def generated_matches_source(cfg: Config, changed: set[str]) -> list[Violation]:
         return []  # CI runs `onto gen --check`: a missing generator must not block a session
     except SourceUnreadable as exc:
         return [unreadable(cfg, exc)]
+    except gen.Unscannable as exc:
+        return [
+            Violation(
+                GENERATED,
+                ERROR,
+                f"{rel} could not be parsed, so {exc.manifest} cannot say which function "
+                "produces each bound term",
+                file=rel,
+                fix="fix the syntax error, then run `onto gen`",
+            )
+            for rel in exc.files
+        ]
     return [
         Violation(
             GENERATED,

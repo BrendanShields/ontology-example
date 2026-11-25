@@ -6,12 +6,15 @@ orders and totals the rest, so that no test depends on what the real glossary bi
 
 from __future__ import annotations
 
+import io
 import json
+import subprocess
 
 import pytest
 from onto import gen, guard
 from onto.cli import main
 from onto.config import load_config
+from onto.hooks import BLOCK
 from onto.testing import scratch_repo
 
 SCHEMA = """\
@@ -466,6 +469,23 @@ def test_no_manifest_is_written_from_a_file_that_does_not_parse(repo, capsys):
         said = capsys.readouterr().err
         assert MANIFEST in said and ORDERS in said and "could not be parsed" in said
     assert (repo.root / MANIFEST).read_text(encoding="utf-8") == before
+
+
+def test_the_stop_gate_blocks_on_a_bound_file_left_unparsable(repo, monkeypatch, capsys):
+    shop(repo)
+    generate(repo)
+    git = ["git", "-C", str(repo.root), "-c", "user.name=t", "-c", "user.email=t@example.com"]
+    for command in (["init", "-q", "-b", "main"], ["add", "-A"], ["commit", "-q", "-m", "base"]):
+        subprocess.run([*git, "-c", "commit.gpgsign=false", *command], check=True)
+    repo.write(ORDERS, CHECKS + "def broken(:\n")
+    repo.write(MANIFEST, "{}\n")  # the branch touched a generated file, so they are compared
+
+    monkeypatch.setattr("sys.stdin", io.StringIO('{"hook_event_name": "Stop"}'))
+    code = main(["trace", "--gate", "stop", "--scope", "branch"])
+
+    said = capsys.readouterr().err
+    assert code == BLOCK
+    assert f"{ORDERS}: error[gate:GeneratedMatchesSource]" in said and "parsed" in said
 
 
 def test_the_manifest_goes_when_the_last_binding_does(repo):

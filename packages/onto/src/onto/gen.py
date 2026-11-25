@@ -51,6 +51,17 @@ class Result:
     diff: str = ""
 
 
+class Unscannable(ValueError):
+    """Code a bindings manifest is compiled from does not parse, so the manifest is not written."""
+
+    def __init__(self, manifest: str, files: list[str]):
+        self.manifest, self.files = manifest, files
+        super().__init__(
+            f"{manifest} is not written: {', '.join(files)} could not be parsed. "
+            "Fix the syntax error and run `onto gen` again"
+        )
+
+
 def targets(cfg: Config) -> list[Target]:
     found = [
         Target(cfg.workflow_json_schema, cfg.workflow_schema, _json_schema),
@@ -169,10 +180,7 @@ def _bindings_json(cfg: Config, ctx: Context) -> Callable[[str, str], str | None
         unreadable = [p.file for p in problems if p.rule == "unreadable"]
         if unreadable:
             # A manifest written now would say that nothing in these files produces a term.
-            raise ValueError(
-                f"{cfg.rel(ctx.bindings_json)} is not written: {', '.join(unreadable)} could "
-                "not be parsed. Fix the syntax error and run `onto gen` again"
-            )
+            raise Unscannable(cfg.rel(ctx.bindings_json), unreadable)
         if not bindings:
             return None
         return json.dumps({"$comment": notice, **rules.manifest(ctx, bindings)}, indent=2) + "\n"

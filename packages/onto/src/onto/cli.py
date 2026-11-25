@@ -413,9 +413,10 @@ def _trace(args) -> int:
     ws = _workspace()
     stop = args.gate == "stop"
     event = hooks.read_event() if stop else {}
-    scope = _scope(ws, args.scope, stop=stop)
-    branch_problems = changes.branch_problems(ws, stop=stop)
+    branch_problems: list = []
     try:
+        scope = _scope(ws, args.scope, stop=stop)
+        branch_problems = changes.branch_problems(ws, stop=stop)
         # A gate written for another namespace concerns every branch, also one with no work item.
         nothing_to_judge = not branch_problems and not namespaces.problems(ws)
         if scope is not None and not scope and nothing_to_judge:
@@ -442,8 +443,8 @@ def _trace(args) -> int:
     except SourceUnreadable as exc:
         if not stop:
             raise
-        # No graph can be built from it. The session can put that right, so it is told
-        # which file, along with what the branch gates found before the graph was needed.
+        # Nothing can be judged past it. The session can put that right, so it is told
+        # which file, along with what the branch gates found before the source was needed.
         unreadable = changes.unreadable(ws.cfg, exc)
         if unreadable not in branch_problems:
             branch_problems.append(unreadable)
