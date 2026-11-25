@@ -19,6 +19,7 @@ from pathlib import Path
 
 from . import frontmatter
 from .config import find_root
+from .rules import scanned_files
 from .workspace import Workspace
 
 CONTEXT = "call-qa"
@@ -116,6 +117,12 @@ def scratch_repo(tmp_path: Path, source: Path | None = None) -> Scratch:
         if (source / target).is_file() and not (root / target).exists():
             (root / target).parent.mkdir(parents=True, exist_ok=True)
             shutil.copy(source / target, root / target)
+    # A bindings manifest is compiled from code as well: bring the files it was read from.
+    for context in workspace.cfg.contexts.values():
+        if context.bindings_json is not None and context.bindings_json.is_file():
+            for rel in scanned_files(workspace.cfg, context):
+                (root / rel).parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy(source / rel, root / rel)
     (root / "work").mkdir(exist_ok=True)
     scratch.write(TEST_PATH.split("::")[0], "def test_example():\n    assert True\n")
     return scratch

@@ -1,7 +1,7 @@
 """`onto rules`, the binding annotations it reads and the manifest `onto gen` writes from it.
 
-The real glossary binds nothing yet, so everything here runs against a toy
-bounded context: a shop that refuses some orders and totals the rest.
+Everything here runs against a toy bounded context, a shop that refuses some
+orders and totals the rest, so that no test depends on what the real glossary binds.
 """
 
 from __future__ import annotations
@@ -58,10 +58,17 @@ enums:
       PLACE_ORDER:
         description: Take the Order.
 """
+# The same glossary with nothing bound.
+UNBOUND = (
+    SCHEMA.replace("    annotations:\n      binding: computed\n", "")
+    .replace("    annotations:\n      binding: rule\n", "")
+    .replace("        annotations:\n          precondition_of: Step.PLACE_ORDER\n", "")
+)
 
 ORDERS = "apps/shop/src/shop/domain/orders.py"
 TILL = "apps/shop/src/shop/till.py"
 MANIFEST = "apps/shop/src/shop/schemas/shop.bindings.json"
+STALL_MANIFEST = "apps/stall/stall.bindings.json"
 
 CHECKS = """\
 from ..generated import Refusal, RefusalRule
@@ -119,9 +126,19 @@ def requirement(repo, identifier: str = "REQ-0001", terms=EVERY_TERM, status: st
     )
 
 
-def rules(capsys, *argv) -> tuple[int, dict]:
-    code = main(["rules", "--json", *argv])
+def stall(repo) -> None:
+    """A second context with the same term names and nothing bound."""
+    repo.context("stall", UNBOUND.replace("shop", "stall"), bindings_json=STALL_MANIFEST)
+
+
+def rules(capsys, context: str = "shop") -> tuple[int, dict]:
+    code = main(["rules", "--json", "--context", context])
     return code, json.loads(capsys.readouterr().out)
+
+
+def report(capsys) -> tuple[int, str]:
+    code = main(["rules", "--context", "shop"])
+    return code, capsys.readouterr().out
 
 
 def problems(capsys) -> tuple[int, list[tuple[str, str, str | None]]]:
@@ -135,12 +152,11 @@ def problems(capsys) -> tuple[int, list[tuple[str, str, str | None]]]:
 # --- the gate ------------------------------------------------------------------------
 
 
-def test_the_real_repository_binds_nothing_yet_and_passes(capsys):
-    from onto.workspace import Workspace
-
-    assert all(not glossary.bound() for glossary in Workspace.at().glossaries.values())
-    assert main(["rules"]) == 0
+def test_a_context_that_binds_nothing_passes_and_says_so(repo, capsys):
+    stall(repo)
+    assert main(["rules", "--context", "stall"]) == 0
     assert "no term declares a binding" in capsys.readouterr().out
+    assert rules(capsys, "stall") == (0, {"contexts": [], "problems": []})
 
 
 def test_a_rule_with_code_and_proof_passes(repo, capsys):
@@ -171,8 +187,8 @@ def test_a_rule_with_code_and_proof_passes(repo, capsys):
         },
     ]
 
-    assert main(["rules"]) == 0
-    text = capsys.readouterr().out
+    code, text = report(capsys)
+    assert code == 0
     assert (
         f"produced by: {TILL}::Till.place" in text and "proven by:   REQ-0001 by TST-0001" in text
     )
@@ -183,8 +199,8 @@ def test_a_rule_nothing_implements_is_unbound(repo, capsys):
     shop(repo, checks=CHECKS.replace("RefusalRule.OVER_LIMIT", "None"))
     assert problems(capsys) == (1, [("error", "unbound-rule", "RefusalRule.OVER_LIMIT")])
 
-    assert main(["rules"]) == 1
-    text = capsys.readouterr().out
+    code, text = report(capsys)
+    assert code == 1
     assert (
         "ontology/domains/shop.yaml: error[unbound-rule] RefusalRule.OVER_LIMIT is declared" in text
     )
@@ -212,8 +228,7 @@ def test_a_computed_slot_is_bound_only_where_a_generated_class_is_given_it(repo,
     elsewhere = "def place(lines):\n    return dict(total=sum(lines))\n"
     shop(repo, place=elsewhere)
     assert problems(capsys) == (1, [("error", "unbound-rule", "total")])
-    assert main(["rules"]) == 1
-    assert "no function passes total= to Order(...)" in capsys.readouterr().out
+    assert "no function passes total= to Order(...)" in report(capsys)[1]
 
 
 def test_code_outside_the_domain_layer_counts_only_when_it_is_on_the_write_path(repo, capsys):
@@ -267,8 +282,7 @@ def test_a_rule_without_a_verified_requirement_is_unproven(repo, capsys, change,
 def test_a_requirement_of_another_context_proves_nothing(repo, capsys):
     shop(repo)
     requirement(repo, terms=EVERY_TERM[:2])
-    # A second context whose glossary has a term of the same name.
-    repo.context("stall", SCHEMA.replace("shop", "stall"))
+    stall(repo)
     repo.item(
         "REQ-0002",
         bounded_context="stall",
@@ -278,7 +292,7 @@ def test_a_requirement_of_another_context_proves_nothing(repo, capsys):
     )
     repo.item("TST-0002", bounded_context="stall", verifies=["REQ-0002"])
     repo.item("EVD-0002", of_test="TST-0002", result="pass")
-    code, answer = rules(capsys, "--context", "shop")
+    code, answer = rules(capsys)
     found = [(p["rule"], p["subject"]) for p in answer["problems"]]
     assert (code, found) == (1, [("unproven-rule", "total")])
 
@@ -341,8 +355,9 @@ def test_a_lookup_does_not_warn_about_rules_that_are_bound_elsewhere(repo, capsy
 
 def test_one_context_can_be_checked_alone(repo, capsys):
     shop(repo, checks="")
-    assert rules(capsys, "--context", "shop")[0] == 1
-    assert rules(capsys, "--context", "call-qa") == (0, {"contexts": [], "problems": []})
+    stall(repo)
+    assert rules(capsys)[0] == 1
+    assert rules(capsys, "stall")[0] == 0
     assert main(["rules", "--context", "nowhere"]) == 1
     assert "no bounded context 'nowhere'" in capsys.readouterr().err
 
@@ -355,8 +370,8 @@ def generate(repo, check: bool = False) -> dict[str, str]:
 
 
 def test_a_context_that_binds_nothing_has_no_manifest(repo):
-    call_qa = "apps/call-qa-agent/src/call_qa_agent/schemas/call-qa.bindings.json"
-    assert call_qa not in generate(repo) and not (repo.root / call_qa).exists()
+    stall(repo)
+    assert STALL_MANIFEST not in generate(repo) and not (repo.root / STALL_MANIFEST).exists()
 
 
 def test_the_manifest_says_which_function_produces_each_bound_term(repo):
@@ -405,10 +420,7 @@ def test_moving_a_producing_function_is_drift_until_the_manifest_is_regenerated(
 def test_the_manifest_goes_when_the_last_binding_does(repo):
     shop(repo)
     generate(repo)
-    unbound = SCHEMA.replace("    annotations:\n      binding: computed\n", "").replace(
-        "    annotations:\n      binding: rule\n", ""
-    )
-    repo.write("ontology/domains/shop.yaml", unbound.replace("precondition_of", "note"))
+    repo.write("ontology/domains/shop.yaml", UNBOUND)
     assert generate(repo, check=True)[MANIFEST] == "drift"
     assert generate(repo)[MANIFEST] == "removed"
     assert not (repo.root / MANIFEST).exists() and MANIFEST not in generate(repo, check=True)
