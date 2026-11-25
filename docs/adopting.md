@@ -38,8 +38,10 @@ Or depend on the git repository directly:
 uv add --dev "onto-cli[gen] @ git+<URL of this repository>#subdirectory=packages/onto"
 ```
 
-The wheel route is the one this repository tests. The `gen` extra brings the
-LinkML generators that `onto gen` needs. The gates themselves run without it.
+The wheel route was run by hand, in a new uv project and in a clean virtual
+environment. The git route was not. The test suite of this repository runs
+`onto init` from its own editable install. The `gen` extra brings the LinkML
+generators that `onto gen` needs. The gates themselves run without it.
 
 Check the install:
 
@@ -109,8 +111,11 @@ the competency questions and the glossary. It does not have to resolve.
 - `CLAUDE.md`: if you have one, the section is written to `CLAUDE.onto.md`. Copy it in and delete that file.
 - A file where `onto gen` would write, such as an existing `src/loans/generated.py`: `onto init` stops before generating and names the file. Point `pydantic`, `json_schema` or `glossary_json` somewhere else in `onto.toml`, then run `onto gen`.
 
-Running `onto init` again is safe. It writes what is missing and changes nothing else.
-It does not update a file it wrote earlier: see [Limits](#limits).
+Running `onto init` again with the same options is safe. It writes what is
+missing and changes nothing else. It does not update a file it wrote earlier:
+see [Limits](#limits). With a different `--onto-cmd` it adds a second set of
+hooks to `.claude/settings.json`, because a hook is recognised by its exact
+command. Change the command by hand instead: see [The onto command](#the-onto-command).
 
 ### Check the result
 
