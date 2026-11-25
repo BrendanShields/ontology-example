@@ -209,9 +209,18 @@ def test_cq08_agrees_with_the_gate_on_closed_incidents(tmp_path):
     assert len(by_gate) == 7
 
 
-def test_cq09_no_requirement_of_the_repository_has_been_replaced(graph, questions):
+def test_cq09_one_requirement_of_the_repository_has_been_replaced(graph, questions):
+    assert ask(graph, questions, "CQ-09", requirement="REQ-0009") == [
+        {
+            "requirement": "REQ-0009",
+            "later": "REQ-0016",
+            "status": "done",
+            "title": "An Evaluation under review is not published until a Review confirms it",
+        }
+    ]
     for requirement in graph.ws.of_class("Requirement"):
-        assert ask(graph, questions, "CQ-09", requirement=requirement.id) == []
+        if requirement.id != "REQ-0009":
+            assert ask(graph, questions, "CQ-09", requirement=requirement.id) == [], requirement.id
 
 
 def test_cq09_walks_the_whole_chain_forward(tmp_path):
@@ -249,9 +258,27 @@ def test_cq09_and_cq04_each_keep_to_their_own_class(tmp_path):
     assert column(answer("CQ-03", term=repo.term), "decision") == []
 
 
-def test_cq10_no_decision_of_the_repository_names_a_path(graph, questions):
-    for path in ("onto.toml", "apps/call-qa-agent/src/call_qa_agent/domain/scoring.py"):
-        assert ask(graph, questions, "CQ-10", path=path) == []
+def test_cq10_the_decisions_of_the_repository_on_the_files_of_the_call_qa_agent(graph, questions):
+    package = "apps/call-qa-agent/src/call_qa_agent"
+
+    def on(path):
+        return [(row["decision"], row["glob"]) for row in ask(graph, questions, "CQ-10", path=path)]
+
+    everywhere = ("DEC-0009", f"{package}/**")  # what a log may hold
+    assert on(f"{package}/domain/scoring.py") == [everywhere]
+    assert on(f"{package}/domain/publication.py") == [
+        everywhere,
+        ("DEC-0010", f"{package}/domain/publication.py"),
+    ]
+    assert on(f"{package}/cli.py") == [everywhere, ("DEC-0011", f"{package}/cli.py")]
+    assert on(f"{package}/ledger.py") == [
+        everywhere,
+        ("DEC-0011", f"{package}/ledger.py"),
+        ("DEC-0012", f"{package}/ledger.py"),
+    ]
+    # No Decision names a path outside the package: not the tests, not the configuration.
+    for path in ("onto.toml", "apps/call-qa-agent/tests/test_publication.py"):
+        assert on(path) == [], path
 
 
 def test_cq10_gives_the_decisions_in_force_on_a_path(tmp_path):
