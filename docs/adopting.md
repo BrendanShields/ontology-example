@@ -275,10 +275,14 @@ uv run onto new Requirement "title=Every item has an owner" bounded_context=loan
 ```
 
 `uv run onto view` lists the Incident with the Requirements it waits on, and
-`uv run onto cq CQ-08` lists every Incident with no verified fix. Take the
-Requirement to verified as above, then set `status: done` in
-`work/INC-0001.md`. If you set it before the Requirement is done, or name no
-Requirement at all, `onto trace` exits 1 with `gate:ClosedIncidentIsFixed`.
+`uv run onto cq CQ-08` lists every Incident that names no Requirement or names
+one that is not yet done. Take the Requirement to verified as above, then set
+`status: done` in `work/INC-0001.md`. If you set it before the Requirement is
+done, or name no Requirement at all, `onto trace` exits 1 with
+`gate:ClosedIncidentIsFixed`. Only `done` closes an Incident: `onto validate`
+refuses `superseded` on one. When an Incident `breaks` a Requirement that is
+already done, set that Requirement back to `in_progress` first. The gate reads
+its status, so it cannot tell that the Requirement was verified again.
 
 **A business rule changes.** Do not edit a Requirement that is done. Write the
 new rule as a Requirement that `replaces` it, restate the tests so that they
@@ -294,16 +298,20 @@ Once the new Requirement is done, `onto trace` exits 1 with
 `gate:ReplacedRequirementIsMarked` until the old one reads `superseded`, and a
 Requirement that reads `superseded` must have one that replaces it.
 `uv run onto cq CQ-09 --bind requirement=REQ-0001` shows what replaced a
-Requirement, all the way forward. Set the Task that delivered only the old
-Requirement to `superseded` as well, and the Change that resolved that Task: a
-Task that still reads `done` keeps its Requirement a claim that needs a Test.
+Requirement, all the way forward. `onto validate` refuses a Requirement whose
+`replaces` leads back to itself, and warns about one set to `superseded`
+before the Requirement that replaces it is done. Set the Task that delivered
+only the old Requirement to `superseded` as well, and the Change that resolved
+that Task: a Task that still reads `done` keeps its Requirement a claim that
+needs a Test.
 
 A Decision can name the files it constrains, as globs from the repository
-root: `affects=src/loans/domain/*.py`. `onto slice` gives that Decision to a
-Task whose branch changed a matching file, or for a file you name with
-`--file`, and `uv run onto cq CQ-10 --bind path=src/loans/domain/owner.py`
-lists the Decisions in force on a path. `onto validate` warns about a glob
-that no longer matches any file.
+root: `affects=src/loans/domain/*.py`. `onto slice --task` gives that Decision
+to any Task when the branch changed a matching file, and `--file` names a file
+or a folder yourself, from the directory you are in.
+`uv run onto cq CQ-10 --bind path=src/loans/domain/owner.py` lists the
+Decisions in force on a path. `onto validate` warns about a glob that no
+longer matches any file.
 
 ## Wire CI
 
@@ -351,6 +359,7 @@ default branch:
 | Generated files match the ontology. | `onto gen --check` | no | yes |
 | A Requirement claimed done has a Test with passing evidence, and the other graph gates hold. | `onto trace` | when the agent stops, for what the branch touched | yes, for everything |
 | A done Requirement that replaces another leaves the old one superseded, and a superseded Requirement has one that replaces it. A done Incident names a Requirement, and each Requirement it breaks or that was raised from it is done. | `onto trace` | when the agent stops, also when the branch touched only the other end of the link | yes |
+| An Incident is not `superseded`, and no Requirement's `replaces` leads back to itself. A warning for an Incident with no `observed_on`, and for a Requirement set to `superseded` before the one that replaces it is done. | `onto validate` | after an Edit or Write of the work item | yes |
 | An `affects` glob of a Decision that is not superseded matches a file. Otherwise a warning. | `onto validate` | after an Edit or Write of the Decision | yes, as a warning |
 | Each gate file and each question declares the namespace of the workflow ontology, and no other namespace in its place. | `onto trace` | when the agent stops, also on a branch that touched no work item | yes |
 | An ontology source the branch changed has an OntologyChangeRequest on the same branch, in progress or done, whatever tool changed it. The branch that brings the ontology layer in needs none. | `onto trace` | when the agent stops | yes |
@@ -392,7 +401,17 @@ outside one. CI and the CODEOWNERS review are the controls.
   Requirement still in force, or a Change that also resolves a Task still in
   force, has no route yet.
 - **A Requirement cannot be withdrawn with nothing in its place.** A
-  Requirement that reads `superseded` needs one that replaces it.
+  Requirement that reads `superseded` needs one that replaces it. The gate
+  accepts a successor of any status, so a draft is enough for it:
+  `onto validate` warns until the successor is done, and does not fail.
+- **The Incident gate reads statuses, not what happened.** An Incident that
+  `breaks` a Requirement which was never set back from `done` passes
+  `gate:ClosedIncidentIsFixed` at once. The Incident playbook asks for the
+  Requirement to be reopened, and nothing checks that it was.
+- **A replaced Requirement is marked only by a done successor.** One replaced
+  through a chain that ends in a done Requirement can still read `done`.
+  `onto slice` leaves it out of the established Requirements. `onto view`
+  shows the status it has.
 - **Nothing is retired from the record.** `onto validate` holds every work
   item to the glossary and to `onto.toml`, so a term that a work item lists, or
   a bounded context that has work items, cannot be removed yet.
