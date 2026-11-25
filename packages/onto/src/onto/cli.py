@@ -382,14 +382,15 @@ def _scope(ws, name: str):
 
 
 def _trace(args) -> int:
-    from . import evidence, gates, hooks
+    from . import evidence, gates, hooks, namespaces
     from .graph import build_graph
 
     ws = _workspace()
     stop = args.gate == "stop"
     event = hooks.read_event() if stop else {}
     scope = _scope(ws, args.scope)
-    if scope is not None and not scope:
+    # A gate written for another namespace concerns every branch, also one with no work item.
+    if scope is not None and not scope and not namespaces.problems(ws):
         if not stop:
             print("onto trace: nothing in scope on this branch")
         return 0
