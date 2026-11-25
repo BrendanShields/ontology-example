@@ -18,6 +18,13 @@ from .report import ERROR, Violation
 DEFAULT_CLASSIFICATION = "internal"
 KIND_ORDER = {"class": 0, "enum": 1, "slot": 2, "value": 3}
 
+# The annotation keys the tooling reads. A key close to one of these is taken
+# for a misspelling of it; any other key is the schema author's own business.
+ANNOTATION_KEYS = ("classification", "denied_synonyms", "binding", "precondition_of")
+# binding value -> the kinds of term that may declare it. `onto rules` holds a
+# term with a binding to code that produces it and to a Requirement that proves it.
+BINDINGS = {"rule": ("enum", "value"), "computed": ("slot",)}
+
 
 def norm(text: str) -> str:
     """Comparison key that ignores case and separators: 'Pass mark' -> 'passmark'."""
@@ -54,6 +61,9 @@ class Term:
     constraints: tuple[str, ...] = ()  # slots
     used_by: tuple[str, ...] = ()  # slots: the classes that carry it
     values: tuple[str, ...] = ()  # enums: bare value names
+    binding: str | None = None  # rule | computed, as declared on this term
+    precondition_of: str | None = None  # values: the term this rule must hold before
+    annotation_keys: tuple[str, ...] = ()
 
     @property
     def short_name(self) -> str:
@@ -144,6 +154,7 @@ class Glossary:
                     definition=_clean(value.description),
                     classification=DEFAULT_CLASSIFICATION,
                     parent=enum_name,
+                    **_tooling(_annotations(value)),
                 )
         return terms
 
@@ -160,6 +171,7 @@ class Glossary:
             denied_synonyms=tuple(_as_list(annotations.get("denied_synonyms"))),
             exact_mappings=tuple(self.view.expand_curie(m) for m in element.exact_mappings or ()),
             close_mappings=tuple(self.view.expand_curie(m) for m in element.close_mappings or ()),
+            **_tooling(annotations),
             **extra,
         )
 
@@ -251,6 +263,20 @@ class Glossary:
         """Every (denied synonym, term to use instead) pair of the context."""
         return [(s, term) for term in self.terms.values() for s in term.denied_synonyms]
 
+    def bound(self) -> list[Term]:
+        """The terms held to code and to proof: rule values and computed slots, by name.
+
+        `binding: rule` on an enum binds each of its values.
+        """
+        found = []
+        for term in self.terms.values():
+            parent = self.terms.get(term.parent or "")
+            if (term.kind == "value" and "rule" in (term.binding, parent and parent.binding)) or (
+                term.kind == "slot" and term.binding == "computed"
+            ):
+                found.append(term)
+        return sorted(found, key=lambda t: t.name)
+
     def related(self, name: str) -> list[str]:
         """Terms one step away: what a slice at depth 1 adds to a focus term."""
         term = self.get(name)
@@ -320,7 +346,56 @@ class Glossary:
                     f"'{synonym}' is denied in favour of '{term.name}' but is itself "
                     f"a name or alias of '{clash.name}'",
                 )
+        bound = {term.name for term in self.bound()}
+        for term in self.terms.values():
+            self._lint_annotations(term, term.name in bound, problem)
         return problems
+
+    def _lint_annotations(self, term: Term, bound: bool, problem) -> None:
+        """A misspelt key or value would silently take the term out of `onto rules`."""
+        for key in term.annotation_keys:
+            near = difflib.get_close_matches(key, ANNOTATION_KEYS, n=1, cutoff=0.72)
+            if key not in ANNOTATION_KEYS and near:
+                problem(
+                    term,
+                    f"annotation '{key}' on '{term.name}' is not a key the tooling reads",
+                    found=key,
+                    suggestions=tuple(near),
+                )
+        if term.binding is not None and term.binding not in BINDINGS:
+            problem(
+                term,
+                f"term '{term.name}' has binding '{term.binding}'",
+                found=term.binding,
+                allowed=tuple(BINDINGS),
+            )
+        elif term.binding is not None and term.kind not in BINDINGS[term.binding]:
+            fits = [name for name, kinds in BINDINGS.items() if term.kind in kinds]
+            problem(
+                term,
+                f"binding '{term.binding}' is declared on the {term.kind} '{term.name}', but "
+                f"belongs on {_one_of(BINDINGS[term.binding])}",
+                found=term.binding,
+                allowed=tuple(fits),
+            )
+        if term.precondition_of is None:
+            return
+        target = self.terms.get(term.precondition_of)
+        if target is None or target == term:
+            problem(
+                term,
+                f"precondition_of on '{term.name}' names '{term.precondition_of}', which is not "
+                "another term of this glossary: give the canonical name of the term the rule "
+                "must hold before",
+                found=term.precondition_of,
+                suggestions=tuple(n for n in self.suggest(term.precondition_of) if n != term.name),
+            )
+        if not bound:
+            problem(
+                term,
+                f"precondition_of is declared on '{term.name}', which is not a bound rule: "
+                "it belongs on a value that has `binding: rule`, or whose enum has",
+            )
 
 
 def _ordered(terms: list[Term]) -> tuple[Term, ...]:
@@ -329,6 +404,23 @@ def _ordered(terms: list[Term]) -> tuple[Term, ...]:
 
 def _clean(text: str | None) -> str:
     return " ".join((text or "").split())
+
+
+def _one_of(kinds: tuple[str, ...]) -> str:
+    return " or ".join(f"{'an' if kind[0] in 'aeiou' else 'a'} {kind}" for kind in kinds)
+
+
+def _tooling(annotations: dict[str, object]) -> dict:
+    """The annotations the gates act on, as Term fields."""
+
+    def text(key: str) -> str | None:
+        return str(annotations[key]).strip() if key in annotations else None
+
+    return {
+        "binding": text("binding"),
+        "precondition_of": text("precondition_of"),
+        "annotation_keys": tuple(annotations),
+    }
 
 
 def _as_list(value) -> list[str]:

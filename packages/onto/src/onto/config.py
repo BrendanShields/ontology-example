@@ -27,6 +27,9 @@ class Context:
     pydantic: Path | None  # generated types
     json_schema: Path | None  # generated JSON Schema
     glossary_json: Path | None  # generated definitions, for apps that quote them at runtime
+    # Files outside the domain layer that also produce bound terms: read by `onto rules`.
+    write_paths: tuple[str, ...] = ()
+    bindings_json: Path | None = None  # generated: which function produces each bound term
 
 
 @dataclass(frozen=True)
@@ -63,7 +66,7 @@ class Config:
             self.rel(self.workflow_shacl): self.rel(self.workflow_schema),
         }
         for ctx in self.contexts.values():
-            for target in (ctx.pydantic, ctx.json_schema, ctx.glossary_json):
+            for target in (ctx.pydantic, ctx.json_schema, ctx.glossary_json, ctx.bindings_json):
                 if target is not None:
                     out[self.rel(target)] = self.rel(ctx.schema)
         return out
@@ -124,6 +127,8 @@ def load_config(root: Path | None = None) -> Config:
             pydantic=root / body["pydantic"] if "pydantic" in body else None,
             json_schema=root / body["json_schema"] if "json_schema" in body else None,
             glossary_json=root / body["glossary_json"] if "glossary_json" in body else None,
+            write_paths=tuple(body.get("write_paths", ())),
+            bindings_json=root / body["bindings_json"] if "bindings_json" in body else None,
         )
 
     on_open_ocr = guard.get("on_open_ocr", "ask")

@@ -50,6 +50,9 @@ jobs:
       - name: Traceability and graph gates
         run: bin/onto trace
 
+      - name: Bound rules have code and proof
+        run: bin/onto rules
+
       - name: Vendored workflow files match their pinned commit
         run: uv run python tools/check_vendored.py
 

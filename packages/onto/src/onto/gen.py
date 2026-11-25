@@ -3,6 +3,8 @@
     ontology/workflow.yaml        -> JSON Schema (frontmatter validation)
                                   -> SHACL shapes (graph validation)
     ontology/domains/<ctx>.yaml   -> Pydantic types and JSON Schema for the app
+                                  -> with the app's code, the bindings manifest:
+                                     which function produces each bound term
 
 The artefacts are committed. `onto gen --check` regenerates them in memory and
 fails if a committed file differs, so a schema change that was not compiled, or
@@ -33,13 +35,14 @@ class GeneratorUnavailable(RuntimeError):
 class Target:
     path: Path
     source: Path
-    render: Callable[[str, str], str]  # (source path relative to root, notice) -> file content
+    # (source path relative to root, notice) -> file content, or None for "no such file"
+    render: Callable[[str, str], str | None]
 
 
 @dataclass(frozen=True)
 class Result:
     path: str
-    status: str  # "written" | "unchanged" | "drift"
+    status: str  # "written" | "unchanged" | "drift" | "removed"
     diff: str = ""
 
 
@@ -55,6 +58,8 @@ def targets(cfg: Config) -> list[Target]:
             found.append(Target(ctx.json_schema, ctx.schema, _json_schema))
         if ctx.glossary_json is not None:
             found.append(Target(ctx.glossary_json, ctx.schema, _glossary_json(ctx)))
+        if ctx.bindings_json is not None:
+            found.append(Target(ctx.bindings_json, ctx.schema, _bindings_json(cfg, ctx)))
     return found
 
 
@@ -69,18 +74,22 @@ def generate(cfg: Config, *, check: bool = False) -> list[Result]:
             rel = cfg.rel(target.path)
             current = target.path.read_text(encoding="utf-8") if target.path.is_file() else None
             if current == content:
-                results.append(Result(rel, "unchanged"))
+                if content is not None:
+                    results.append(Result(rel, "unchanged"))
             elif check:
                 diff = "".join(
                     difflib.unified_diff(
                         (current or "").splitlines(keepends=True),
-                        content.splitlines(keepends=True),
+                        (content or "").splitlines(keepends=True),
                         fromfile=f"{rel} (committed)",
                         tofile=f"{rel} (generated from {source})",
                         n=1,
                     )
                 )
                 results.append(Result(rel, "drift", diff))
+            elif content is None:
+                target.path.unlink()
+                results.append(Result(rel, "removed"))
             else:
                 target.path.parent.mkdir(parents=True, exist_ok=True)
                 target.path.write_text(content, encoding="utf-8")
@@ -117,6 +126,25 @@ def _glossary_json(ctx: Context) -> Callable[[str, str], str]:
         return (
             json.dumps({"$comment": notice, "context": ctx.name, "terms": terms}, indent=2) + "\n"
         )
+
+    return render
+
+
+def _bindings_json(cfg: Config, ctx: Context) -> Callable[[str, str], str | None]:
+    """Which function produces each rule and computed slot the glossary binds.
+
+    Unlike the other artefacts this one is compiled from the app's code as well
+    as from the schema, so that moving or deleting a producing function shows
+    up as drift. A context that binds nothing has no such file.
+    """
+
+    def render(source: str, notice: str) -> str | None:
+        from . import rules
+
+        bindings, _ = rules.scan(cfg, ctx, Glossary(ctx))
+        if not bindings:
+            return None
+        return json.dumps({"$comment": notice, **rules.manifest(ctx, bindings)}, indent=2) + "\n"
 
     return render
 

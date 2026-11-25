@@ -12,6 +12,7 @@ test states only what it is about.
 
 from __future__ import annotations
 
+import json
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
@@ -84,6 +85,14 @@ class Scratch:
         meta = {key: value for key, value in meta.items() if value is not None}
         folder = "work/evidence" if prefix == "EVD" else "work"
         return self.write(f"{folder}/{identifier}.md", frontmatter.render(meta, body))
+
+    def context(self, name: str, schema: str, **table: str | list[str]) -> None:
+        """Add a bounded context of your own: its glossary and its table in onto.toml."""
+        self.write(f"ontology/domains/{name}.yaml", schema)
+        lines = [f"\n[contexts.{name}]", f'schema = "ontology/domains/{name}.yaml"']
+        lines += [f"{key} = {json.dumps(value)}" for key, value in table.items()]
+        with (self.root / "onto.toml").open("a", encoding="utf-8") as config:
+            config.write("\n".join(lines) + "\n")
 
     def ws(self) -> Workspace:
         return Workspace.at(self.root)

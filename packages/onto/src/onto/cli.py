@@ -479,6 +479,12 @@ def _trace_table(rows: list) -> str:
     )
 
 
+def _rules(args) -> int:
+    from . import rules
+
+    return rules.run(_workspace(), args.format, args.context)
+
+
 def _evidence_collect(args) -> int:
     from . import evidence
 
@@ -716,6 +722,11 @@ def _parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--collect", action="store_true", help="run the tests in scope first")
     p.add_argument("--context")
+    fmt(p, "text", "json")
+
+    p = command("rules", _rules, "hold each bound rule to the code and the proof behind it")
+    p.add_argument("--context")
+    p.add_argument("--json", action="store_const", const="json", dest="format")
     fmt(p, "text", "json")
 
     evidence = sub.add_parser("evidence", help="record what the tests show")
