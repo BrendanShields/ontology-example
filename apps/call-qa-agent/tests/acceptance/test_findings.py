@@ -1,4 +1,4 @@
-"""Acceptance tests for the guarded write path: REQ-0001, REQ-0002, REQ-0003."""
+"""Acceptance tests for the guarded write path: REQ-0001 to REQ-0003 and REQ-0012 to REQ-0015."""
 
 from __future__ import annotations
 
@@ -76,9 +76,11 @@ class TestJudgedFindingCitesAnUtterance:
 
 
 def test_a_proposal_that_is_not_a_finding_is_rejected_with_the_accepted_fields(session):
+    """REQ-0015: a proposal that is not a well-formed Finding is answered and not recorded."""
     (rejection,) = session.record_finding({"criterion": "greeting", "finding_outcome": "PROBABLY"})
 
     assert rejection.rejection_rule == RejectionRule.MALFORMED_FINDING
     assert rejection.criterion == "greeting"
     assert "finding_outcome" in rejection.detail and "rationale" in rejection.detail
     assert "cited_utterances" in rejection.allowed_values
+    assert session.findings == []

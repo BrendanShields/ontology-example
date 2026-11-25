@@ -25,3 +25,9 @@ def test_session_holds_in_every_state_within_the_bound():
 def test_loop_holds_for_every_script_within_the_bound():
     # Every sequence of 0 to 4 turns over the 13 kinds of turn: 1 + 13 + 169 + 2,197 + 28,561.
     assert explore.check_loop(max_turns=4) == {"runs": 30_941}
+
+
+def test_ledger_holds_for_every_sequence_of_commands_within_the_bound():
+    # Every sequence of 0 to 5 commands over the 9 commands: 1 + 9 + 81 + 729 + 6,561 + 59,049.
+    # The last command of a sequence of 5 is given, checked and not followed further.
+    assert explore.check_ledger(max_commands=5) == {"sequences": 66_430, "commands": 66_429}

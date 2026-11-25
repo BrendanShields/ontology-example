@@ -33,6 +33,20 @@ SAMPLES = {
         "rationale": "Greets the customer.",
     },
     "Rejection": {"rejection_rule": "MISSING_FINDING", "detail": "No Finding."},
+    "Review": {
+        "call": "CALL-0001",
+        "scorecard": "example-v1",
+        "reviewer": "QA-0001",
+        "review_outcome": "CONFIRMED",
+        "reviewed_at": "2026-11-02T09:30:00Z",
+    },
+    "AuditRecord": {
+        "call": "CALL-0001",
+        "scorecard": "example-v1",
+        "publication_state": "STAGED",
+        "actor": "call-qa-agent",
+        "recorded_at": "2026-11-02T09:30:00Z",
+    },
 }
 SAMPLES["Call"] = {
     "call_id": "CALL-0001",

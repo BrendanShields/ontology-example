@@ -17,8 +17,15 @@ from .tools import run_tool
 
 
 def load_steps(path: Path) -> list[dict]:
+    """The recorded steps of a file. Raises ValueError, naming a step by its number only."""
     data = json.loads(path.read_text(encoding="utf-8"))
-    return data["steps"] if isinstance(data, dict) else data
+    steps = data.get("steps") if isinstance(data, dict) else data
+    if not isinstance(steps, list):
+        raise ValueError("it holds no list of steps")
+    for number, step in enumerate(steps, start=1):
+        if not isinstance(step, dict) or not isinstance(step.get("tool"), str):
+            raise ValueError(f"step {number} names no tool")
+    return steps
 
 
 def replay(

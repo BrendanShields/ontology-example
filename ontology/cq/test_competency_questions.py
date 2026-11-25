@@ -47,9 +47,21 @@ def test_cq01_a_change_is_traced_to_the_requirements_it_serves(graph, questions)
     assert {row["task"] for row in rows} == {"TASK-0001", "TASK-0002", "TASK-0003"}
 
 
-def test_cq02_finds_what_is_absent(graph, questions):
-    # REQ-0008 is agreed and has no Test. REQ-0009 has none either but is a draft.
-    assert column(ask(graph, questions, "CQ-02"), "requirement") == ["REQ-0008"]
+def test_cq02_every_agreed_requirement_here_has_a_test(graph, questions):
+    assert column(ask(graph, questions, "CQ-02"), "requirement") == []
+
+
+def test_cq02_finds_what_is_absent(tmp_path):
+    repo = scratch_repo(tmp_path)
+    repo.item("REQ-0001", status="in_progress")  # agreed, and no Test verifies it
+    repo.item("REQ-0002", status="draft")  # no Test either, but not agreed yet
+    repo.item("REQ-0003", status="done")
+    repo.item("TST-0001", verifies=["REQ-0003"])
+    ws = Workspace.at(repo.root)
+
+    rows = cq.run(build_graph(ws), cq.load(ws.cfg)["CQ-02"])
+
+    assert column(rows, "requirement") == ["REQ-0001"]
 
 
 def test_cq03_leaves_out_superseded_decisions(graph, questions):
@@ -58,7 +70,10 @@ def test_cq03_leaves_out_superseded_decisions(graph, questions):
         "DEC-0005",
         "DEC-0006",
     ]
-    assert column(ask(graph, questions, "CQ-03", term="Scorecard"), "decision") == ["DEC-0002"]
+    assert column(ask(graph, questions, "CQ-03", term="Scorecard"), "decision") == [
+        "DEC-0002",
+        "DEC-0012",
+    ]
 
 
 def test_cq03_agrees_with_the_slicer(graph, questions):
@@ -84,7 +99,16 @@ def test_cq04_walks_the_whole_chain(graph, questions):
 
 def test_cq05_returns_the_complete_set(graph, questions):
     rows = ask(graph, questions, "CQ-05")
-    assert sorted({row["requirement"] for row in rows}) == ["REQ-0002", "REQ-0008", "REQ-0009"]
+    # REQ-0009 is superseded and still in the answer: the question is about what was written.
+    assert sorted({row["requirement"] for row in rows}) == [
+        "REQ-0002",
+        "REQ-0008",
+        "REQ-0009",
+        "REQ-0017",
+        "REQ-0021",
+        "REQ-0022",
+        "REQ-0023",
+    ]
     assert {row["risk"] for row in rows} == {"high"}
 
 
@@ -93,6 +117,7 @@ def test_cq06_gives_the_impact_of_changing_a_term(graph, questions):
     assert sorted({row["requirement"] for row in rows}) == [
         *(f"REQ-000{n}" for n in range(1, 6)),
         "REQ-0010",
+        *(f"REQ-00{n}" for n in range(12, 16)),
     ]
     assert {"TST-0001", "TST-0004"} <= {row.get("test") for row in rows}
 
