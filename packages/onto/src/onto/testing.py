@@ -62,6 +62,12 @@ def _defaults(context: str, term: str) -> dict[str, dict]:
             "path": TEST_PATH,
         },
         "EVD": {"of_test": "TST-0001", "result": "pass"},
+        "INC": {
+            "title": "An incident",
+            "status": "in_progress",
+            "bounded_context": context,
+            "observed_on": "2026-01-15",
+        },
         "OCR": {
             "title": "A request",
             "status": "draft",

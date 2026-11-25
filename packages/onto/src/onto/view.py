@@ -14,6 +14,10 @@ its state is read from the repository, never from what anyone says:
     verify      every Requirement has a Test with passing Evidence       onto evidence collect
     trace       the Task and its Requirements are done and gates hold    onto trace
     ship        a Change resolves the Task                               onto prov emit
+
+What happens after ship has no stage of its own. An Incident comes back in at
+intake, as a Requirement it breaks or one raised from it, and a changed rule
+comes back as a Requirement that replaces the old one. The plan lists both.
 """
 
 from __future__ import annotations
@@ -35,6 +39,7 @@ STAGES = (
     ("ship", "Ship", "onto prov emit"),
 )
 DONE, CURRENT, BLOCKED, TODO = "done", "current", "blocked", "todo"
+SETTLED = ("done", "superseded")  # the statuses of a work item nobody is still to act on
 
 
 def build(ws: Workspace) -> dict:
@@ -50,6 +55,10 @@ def build(ws: Workspace) -> dict:
         _task(ws, task, rows, file_problems, gate_problems, term_problems, in_force)
         for task in ws.of_class("Task")
     ]
+    replaced_by: dict[str, list[str]] = {}
+    for requirement in ws.of_class("Requirement"):
+        for earlier in requirement.values("replaces"):
+            replaced_by.setdefault(earlier, []).append(requirement.id)
     return {
         "task_in_hand": task_in_hand.id if task_in_hand else None,
         "stages": [{"key": key, "label": label, "gate": gate} for key, label, gate in STAGES],
@@ -66,6 +75,9 @@ def build(ws: Workspace) -> dict:
                     "tasks": sorted(row.tasks),
                     "tests": row.tests,
                     "verdict": row.verdict,
+                    "replaces": _one(ws, row.requirement, "replaces"),
+                    "replaced_by": replaced_by.get(row.requirement, []),
+                    "raised_from": _one(ws, row.requirement, "raised_from"),
                 }
                 for row in rows.values()
             ],
@@ -74,6 +86,10 @@ def build(ws: Workspace) -> dict:
         "ontology": _ontology(ws),
         "plan": _plan(ws, tasks, in_force),
     }
+
+
+def _one(ws: Workspace, identifier: str, slot: str) -> str | None:
+    return next(iter(ws.by_id[identifier].values(slot)), None)
 
 
 # --- stages ------------------------------------------------------------------------
@@ -112,11 +128,13 @@ def _task(ws, task: WorkItem, rows, file_problems, gate_problems, term_problems,
     file_errors = [p for p in file_problems if p.blocking and p.subject in own]
     vocabulary_errors = term_problems.get(task.context, [])
     gate_errors = [p for p in gate_problems if p.blocking and p.subject in own | tests]
-    trace_rows = [rows[r.id] for r in requirements if r.id in rows]
+    # A superseded Requirement is no longer a claim, so nothing is left to verify on it.
+    live = [r for r in requirements if r.status != "superseded"]
+    trace_rows = [rows[r.id] for r in live if r.id in rows]
     unverified = [row for row in trace_rows if row.verdict != "verified"]
     failing = [row.requirement for row in trace_rows if row.verdict == "failing"]
     untested = [row.requirement for row in trace_rows if not row.tests]
-    open_claims = [i.id for i in (task, *requirements) if i.status != "done"]
+    open_claims = [i.id for i in (task, *requirements) if i.status not in SETTLED]
 
     def first(problems: list[Violation]) -> str:
         return f"{len(problems)} problem(s): {problems[0].message}" if problems else ""
@@ -136,7 +154,7 @@ def _task(ws, task: WorkItem, rows, file_problems, gate_problems, term_problems,
             first(file_errors) or "work items validate against the glossary",
         ),
         "design": (
-            bool(decisions) or "design" in logged or task.status == "done",
+            bool(decisions) or "design" in logged or task.status in SETTLED,
             False,
             f"in force: {', '.join(decisions)}" if decisions else "no Decision on these terms yet",
         ),
@@ -151,11 +169,13 @@ def _task(ws, task: WorkItem, rows, file_problems, gate_problems, term_problems,
             ),
         ),
         "verify": (
-            bool(trace_rows) and not unverified,
+            (bool(trace_rows) or bool(requirements) and not live) and not unverified,
             bool(failing),
             f"failing: {', '.join(failing)}"
             if failing
-            else f"{len(trace_rows) - len(unverified)} of {len(trace_rows)} verified",
+            else f"{len(trace_rows) - len(unverified)} of {len(trace_rows)} verified"
+            if live
+            else "every Requirement it implements is superseded",
         ),
         "trace": (
             not open_claims and not gate_errors,
@@ -285,6 +305,10 @@ def _plan(ws: Workspace, tasks: list[dict], in_force: list[WorkItem]) -> dict:
         if d.status in ("done", "superseded")
         for target in d.values("supersedes")
     }
+    requirements = ws.of_class("Requirement")
+    replaced_by = {
+        target: r.id for r in requirements if r.status in SETTLED for target in r.values("replaces")
+    }
     return {
         "order": _order(tasks),
         "requirements_by_status": {
@@ -314,13 +338,45 @@ def _plan(ws: Workspace, tasks: list[dict], in_force: list[WorkItem]) -> dict:
             for o in ws.of_class("OntologyChangeRequest")
             if o.status != "done"
         ],
+        "superseded_requirements": [
+            {
+                "id": r.id,
+                "title": str(r.meta.get("title", "")),
+                "replaced_by": replaced_by.get(r.id),
+            }
+            for r in requirements
+            if r.status == "superseded"
+        ],
+        "open_incidents": [_incident(ws, i, requirements) for i in _open_incidents(ws)],
+    }
+
+
+def _open_incidents(ws: Workspace) -> list[WorkItem]:
+    return [i for i in ws.of_class("Incident") if i.status not in SETTLED]
+
+
+def _incident(ws: Workspace, incident: WorkItem, requirements: list[WorkItem]) -> dict:
+    """An Incident with the Requirements that close it, as gate:ClosedIncidentIsFixed reads them."""
+    breaks = incident.values("breaks")
+    raised = [r.id for r in requirements if incident.id in r.values("raised_from")]
+    return {
+        "id": incident.id,
+        "title": str(incident.meta.get("title", "")),
+        "status": incident.status,
+        "context": incident.context,
+        "observed_on": str(incident.meta.get("observed_on", "")),
+        "breaks": breaks,
+        "raised": raised,
+        "waiting_on": [
+            r for r in (*breaks, *raised) if r in ws.by_id and ws.by_id[r].status not in SETTLED
+        ],
     }
 
 
 def _order(tasks: list[dict]) -> list[str]:
     """Open tasks in an order that respects blocked_by: what can start now comes first."""
-    remaining = {t["id"]: set(t["blocked_by"]) for t in tasks if t["status"] != "done"}
-    done = {t["id"] for t in tasks if t["status"] == "done"}
+    remaining = {t["id"]: set(t["blocked_by"]) for t in tasks if t["status"] not in SETTLED}
+    done = {t["id"] for t in tasks if t["status"] in SETTLED}
     order: list[str] = []
     while remaining:
         ready = sorted(t for t, blockers in remaining.items() if blockers <= done | set(order))
@@ -347,6 +403,27 @@ def render_text(view: dict) -> str:
         for stage in task["stages"]:
             if stage["state"] in (CURRENT, BLOCKED):
                 lines.append(f"      {stage['key']}: {stage['detail']}  (gate: {stage['gate']})")
+        lines.append("")
+    for requirement in view["trace"]["requirements"]:
+        links = [
+            f"replaces {requirement['replaces']}" if requirement["replaces"] else "",
+            f"raised from {requirement['raised_from']}" if requirement["raised_from"] else "",
+        ]
+        if any(links):
+            lines.append(
+                f"{requirement['id']} [{requirement['status']}] {', '.join(filter(None, links))}"
+            )
+    for incident in view["plan"]["open_incidents"]:
+        named = [*incident["breaks"], *incident["raised"]]
+        waits = (
+            f"waiting on {', '.join(incident['waiting_on'])}"
+            if incident["waiting_on"]
+            else "ready to close"
+            if named
+            else "names no Requirement yet"
+        )
+        lines.append(f"{incident['id']} [{incident['status']}] {incident['title']}: {waits}")
+    if lines and lines[-1]:
         lines.append("")
     cover = view["trace"]["coverage"]
     lines.append(

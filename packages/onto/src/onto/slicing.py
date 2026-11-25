@@ -5,6 +5,10 @@ itself (`onto overview`), resolves names one at a time (`onto resolve`), and
 receives a slice for the task in hand (`onto slice`): the terms its
 requirements use, their direct neighbours, the decisions still in force about
 them and the requirements already established on them.
+
+A Decision can also constrain files instead of terms, through the globs in its
+`affects`. It joins the slice of work that touches a matching file: a file
+named with `--file`, or for the task in hand a file the branch changed.
 """
 
 from __future__ import annotations
@@ -16,6 +20,7 @@ import re
 import subprocess
 from dataclasses import dataclass, field
 
+from .config import matches
 from .glossary import Glossary, Term
 from .workspace import WorkItem, Workspace
 
@@ -35,7 +40,12 @@ class Slice:
     focus: list[Term] = field(default_factory=list)  # named by the work itself
     neighbours: list[Term] = field(default_factory=list)  # one step away
     decisions: list[WorkItem] = field(default_factory=list)
+    # Decision id -> the files of this work its `affects` globs match. A Decision
+    # listed with no file is here because which files the work touches is unknown.
+    affecting: dict[str, list[str]] = field(default_factory=dict)
     established: list[WorkItem] = field(default_factory=list)
+    replaced: list[WorkItem] = field(default_factory=list)  # by the work's own Requirements
+    incidents: list[WorkItem] = field(default_factory=list)  # open, and answered by this work
     types_file: str | None = None
     depth: int = 1
 
@@ -89,6 +99,36 @@ def decisions_in_force(ws: Workspace, context: str | None = None) -> list[WorkIt
     ]
 
 
+def decisions_affecting(ws: Workspace, files: set[str] | None) -> dict[str, list[str]]:
+    """Decisions in force whose `affects` globs match one of the files: id -> the files matched.
+
+    `files` is None when what the work touches is unknown. Every Decision in
+    force that constrains files is then given, each with no file: a constraint
+    shown without need costs a line, one withheld costs the constraint.
+    """
+    found: dict[str, list[str]] = {}
+    for decision in decisions_in_force(ws):
+        globs = decision.values("affects")
+        if not globs:
+            continue
+        matched = sorted(f for f in files or () if matches(f, globs))
+        if matched or files is None:
+            found[decision.id] = matched
+    return found
+
+
+def touched_files(ws: Workspace, task: WorkItem | None, named: list[str] | None) -> set[str] | None:
+    """The files the sliced work touches: those named, and for the task in hand the branch's."""
+    files = {ws.cfg.rel(name) for name in named or ()}
+    in_hand = current_task(ws)
+    if task is None or in_hand is None or in_hand.id != task.id:
+        return files
+    from .gates import changed_files  # gates needs the graph; a term slice does not
+
+    changed = changed_files(ws.cfg)
+    return None if changed is None else files | changed
+
+
 # --- building ------------------------------------------------------------------------
 
 
@@ -99,6 +139,7 @@ def build(
     terms: list[str] | None = None,
     context: str | None = None,
     depth: int = 1,
+    files: list[str] | None = None,
 ) -> Slice:
     task_item: WorkItem | None = None
     requirements: list[WorkItem] = []
@@ -153,6 +194,19 @@ def build(
         used = {t.name for n in item.values("uses_terms") if (t := glossary.get(n))}
         return bool(used & relevant)
 
+    replaced = [
+        ws.by_id[old]
+        for req in requirements
+        for old in req.values("replaces")
+        if old in ws.by_id and old not in current
+    ]
+    # What this work replaces is on its way out, whatever its status says today.
+    outgoing = current | {r.id for r in replaced}
+    raised_from = {incident for req in requirements for incident in req.values("raised_from")}
+    affecting = decisions_affecting(ws, touched_files(ws, task_item, files))
+    decisions = [d for d in decisions_in_force(ws, glossary.name) if about(d)]
+    decisions += [ws.by_id[d] for d in affecting if ws.by_id[d] not in decisions]
+
     return Slice(
         context=glossary.name,
         title=title,
@@ -160,14 +214,22 @@ def build(
         requirements=requirements,
         focus=focus,
         neighbours=neighbours,
-        decisions=[d for d in decisions_in_force(ws, glossary.name) if about(d)],
+        decisions=decisions,
+        affecting=affecting,
         established=[
             r
             for r in ws.of_class("Requirement")
             if r.status == "done"
             and r.context == glossary.name
-            and r.id not in current
+            and r.id not in outgoing
             and about(r)
+        ],
+        replaced=replaced,
+        incidents=[
+            i
+            for i in ws.of_class("Incident")
+            if i.status not in ("done", "superseded")
+            and (i.id in raised_from or set(i.values("breaks")) & current)
         ],
         types_file=ws.cfg.rel(glossary.context.pydantic) if glossary.context.pydantic else None,
         depth=depth,
@@ -239,6 +301,10 @@ def _first_sentence(text: str) -> str:
     return match.group(1) if match else flat
 
 
+def _ears(requirement: WorkItem) -> str:
+    return " ".join(str(requirement.meta.get("ears_text", "")).split())
+
+
 def render_markdown(ws: Workspace, built: Slice) -> str:
     glossary = ws.glossaries[built.context]
     out = [
@@ -255,8 +321,19 @@ def render_markdown(ws: Workspace, built: Slice) -> str:
             )
         for req in built.requirements:
             risk = f", risk {req.meta['risk_tier']}" if req.meta.get("risk_tier") else ""
-            text = " ".join(str(req.meta.get("ears_text", "")).split())
-            out.append(f"- {req.id} [{req.status}{risk}] {text}")
+            out.append(f"- {req.id} [{req.status}{risk}] {_ears(req)}")
+            for old in req.values("replaces"):
+                earlier = ws.by_id.get(old)
+                was = f": {_ears(earlier)}" if earlier else ""
+                out.append(f"  - replaces {old}, which is no longer to be kept true{was}")
+            for incident in req.values("raised_from"):
+                out.append(f"  - raised from {incident}")
+        for incident in built.incidents:
+            broken = ", ".join(incident.values("breaks"))
+            out.append(
+                f"- {incident.id} [{incident.status}] {incident.meta.get('title', '')}"
+                + (f" (breaks {broken})" if broken else "")
+            )
     out += ["", "## Terms"]
     for term in built.focus:
         out += _term_block(glossary, term) + [""]
@@ -268,12 +345,16 @@ def render_markdown(ws: Workspace, built: Slice) -> str:
         out += ["## Decisions in force"]
         for decision in built.decisions:
             rationale = _first_sentence(decision.meta.get("rationale", ""))
-            out.append(f"- {decision.id} {decision.meta.get('title', '')}. {rationale}")
+            line = f"- {decision.id} {decision.meta.get('title', '')}. {rationale}"
+            if decision.id in built.affecting:
+                on = built.affecting[decision.id] or decision.values("affects")
+                line += f" Affects {', '.join(on)}."
+            out.append(line)
         out.append("")
     if built.established:
         out += ["## Requirements already established on these terms (keep them true)"]
         for req in built.established:
-            out.append(f"- {req.id} {' '.join(str(req.meta.get('ears_text', '')).split())}")
+            out.append(f"- {req.id} {_ears(req)}")
         out.append("")
     if built.types_file:
         types = [t.name for t in (*built.focus, *built.neighbours) if t.kind in ("class", "enum")]
@@ -323,10 +404,19 @@ def render_json(ws: Workspace, built: Slice) -> str:
         {
             "context": built.context,
             "task": item(built.task, "title") if built.task else None,
-            "requirements": [item(r, "ears_text", "risk_tier") for r in built.requirements],
+            "requirements": [
+                item(r, "ears_text", "risk_tier", "replaces", "raised_from")
+                for r in built.requirements
+            ],
+            "replaced_requirements": [item(r, "ears_text") for r in built.replaced],
+            "incidents": [item(i, "title", "observed_on", "breaks") for i in built.incidents],
             "terms": [term(t) for t in built.focus],
             "related_terms": [term(t) for t in built.neighbours],
-            "decisions_in_force": [item(d, "title", "rationale") for d in built.decisions],
+            "decisions_in_force": [
+                item(d, "title", "rationale", "affects")
+                | ({"affected_files": built.affecting[d.id]} if d.id in built.affecting else {})
+                for d in built.decisions
+            ],
             "established_requirements": [item(r, "ears_text") for r in built.established],
             "types_file": built.types_file,
         },

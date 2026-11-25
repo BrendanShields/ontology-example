@@ -8,9 +8,12 @@ evidence?) live in the SHACL gates and run on the graph: see gates.py.
 from __future__ import annotations
 
 import difflib
+import os
 import re
+import subprocess
 
 from . import ears
+from .config import Config, matches
 from .glossary import Glossary, Resolution
 from .report import ERROR, WARNING, Violation
 from .textscan import DeniedMatcher
@@ -128,9 +131,47 @@ def validate_item(ws: Workspace, item: WorkItem) -> list[Violation]:
                     found=value,
                 )
 
+    if item.cls == "Decision" and item.status != "superseded":
+        files = repository_files(ws.cfg) if item.values("affects") else []
+        for glob in item.values("affects"):
+            if not any(matches(rel, (glob,)) for rel in files):
+                problem(
+                    "stale-affects",
+                    f"affects names '{glob}', which matches no file in the repository",
+                    "affects",
+                    severity=WARNING,
+                    found=glob,
+                    fix="write the glob from the repository root, or take it out if the "
+                    "files it named are gone",
+                )
+
     if glossary is not None:
         problems.extend(_denied_in_prose(item, glossary))
     return problems
+
+
+SKIPPED_FOLDERS = ("node_modules", "__pycache__")
+
+
+def repository_files(cfg: Config) -> list[str]:
+    """Every file of the repository, relative to its root: what git tracks or would track.
+
+    Outside a git repository the folders are walked instead, leaving out hidden
+    ones and those no one writes by hand.
+    """
+    listed = subprocess.run(
+        ["git", "-C", str(cfg.root), "ls-files", "--cached", "--others", "--exclude-standard"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if listed.returncode == 0:
+        return [rel for rel in listed.stdout.splitlines() if (cfg.root / rel).is_file()]
+    found: list[str] = []
+    for folder, folders, names in os.walk(cfg.root):
+        folders[:] = [f for f in folders if not f.startswith(".") and f not in SKIPPED_FOLDERS]
+        found.extend(cfg.rel(os.path.join(folder, name)) for name in names)
+    return found
 
 
 # --- shape -----------------------------------------------------------------------

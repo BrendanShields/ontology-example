@@ -70,7 +70,7 @@ def run_shacl(ws: Workspace, graph: WorkGraph) -> list[Violation]:
 
         subject = graph.short(str(focus))
         item = ws.by_id.get(subject)
-        slot = slot_names.get(str(path)) if path is not None else None
+        slot = _slot_name(slot_names, item.cls if item else None, path)
         source_shape = report.value(result, SH.sourceShape)
         sparql = component == SH.SPARQLConstraintComponent
         severity = report.value(result, SH.resultSeverity)
@@ -92,13 +92,24 @@ def _local(iri) -> str:
     return str(iri).rsplit("#", 1)[-1].rsplit("/", 1)[-1]
 
 
-def _slot_names(ws: Workspace) -> dict[str, str]:
-    """Slot IRI -> slot name, for pointing a result at the frontmatter key it is about."""
-    names: dict[str, str] = {}
-    for cls in ws.schema.view.all_classes():
-        for slot in ws.schema.slots(cls):
-            names[slot.iri] = slot.name
-    return names
+def _slot_names(ws: Workspace) -> dict[str, dict[str, str]]:
+    """Class -> slot IRI -> slot name, for pointing a result at the frontmatter key it is about.
+
+    Two slots may share an IRI: `supersedes` and `replaces` are both
+    prov:wasRevisionOf. Which one a result is about depends on the class of its node.
+    """
+    return {
+        cls: {slot.iri: slot.name for slot in ws.schema.slots(cls)}
+        for cls in ws.schema.view.all_classes()
+    }
+
+
+def _slot_name(names: dict[str, dict[str, str]], cls: str | None, path) -> str | None:
+    if path is None:
+        return None
+    if cls in names:
+        return names[cls].get(str(path))
+    return next((slots[str(path)] for slots in names.values() if str(path) in slots), None)
 
 
 def _message(graph: WorkGraph, report: Graph, result, slot, value, component) -> str:
@@ -287,15 +298,24 @@ def branch_scope(ws: Workspace, *, or_uncommitted: bool = False) -> set[str] | N
 
 def _closure(ws: Workspace, ids: set[str]) -> set[str]:
     """Follow the trace links both ways until nothing new is reached."""
-    links = {"Task": "implements", "Test": "verifies", "Change": "resolves", "Evidence": "of_test"}
+    # A gate may report on the far end of a link: a replaced Requirement that is
+    # not marked, an Incident closed before the Requirement raised from it is done.
+    links = {
+        "Task": ("implements",),
+        "Test": ("verifies",),
+        "Change": ("resolves",),
+        "Evidence": ("of_test",),
+        "Requirement": ("replaces", "raised_from"),
+        "Incident": ("breaks",),
+    }
     scope = set(ids)
     while True:
         grown = set(scope)
         for item in ws.items:
-            slot = links.get(item.cls or "")
-            if slot is None:
+            slots = links.get(item.cls or "")
+            if slots is None:
                 continue
-            targets = set(item.values(slot))
+            targets = {target for slot in slots for target in item.values(slot)}
             if item.id in scope:
                 grown |= targets
             elif item.cls != "Change" and targets & scope:

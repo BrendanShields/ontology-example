@@ -156,6 +156,7 @@ def _slice(args) -> int:
         terms=args.term or None,
         context=args.context,
         depth=args.depth,
+        files=args.file or None,
     )
     fmt = "context-json" if args.for_subagent else args.format
     if fmt == "json":
@@ -726,6 +727,12 @@ def _parser() -> argparse.ArgumentParser:
     p = command("slice", _slice, "the terms, decisions and requirements one piece of work needs")
     p.add_argument("--task", help="a Task id (default: the task in hand)")
     p.add_argument("--term", action="append", help="a term to slice around; repeatable")
+    p.add_argument(
+        "--file",
+        action="append",
+        help="a file the work touches: a Decision whose affects globs match it joins the "
+        "slice; repeatable (for the task in hand the files the branch changed are added)",
+    )
     p.add_argument("--context")
     p.add_argument("--depth", type=int, default=1, choices=(0, 1))
     p.add_argument("--max-tokens", type=int, default=3000)
