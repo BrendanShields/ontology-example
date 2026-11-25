@@ -66,6 +66,10 @@ jobs:
         if: always()
         run: bin/onto prov emit
 
+      - name: One index of what the gates showed
+        if: always()
+        run: bin/onto verify --scope all
+
       - name: Keep the evidence and the provenance
         if: always()
         uses: actions/upload-artifact@v4
