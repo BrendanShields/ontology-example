@@ -4,14 +4,12 @@ from __future__ import annotations
 
 import itertools
 
-import pytest
 import yaml
 from call_qa_agent.cli import load_scorecard
 
 NAMES = ("c0", "c1", "c2")
 
 
-@pytest.mark.xfail(strict=True, reason="REQ-0011 is not implemented yet: TASK-0006")
 def test_scorecard_is_loaded_exactly_when_every_criterion_id_is_its_own(tmp_path):
     """REQ-0011, for every Scorecard of one to three Criteria named from three names."""
     path = tmp_path / "scorecard.yaml"
