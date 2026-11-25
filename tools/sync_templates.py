@@ -109,6 +109,8 @@ def settings_template(text: str) -> bytes:
     here = scaffold.never_edited(load_config(ROOT))
     permissions = settings.get("permissions", {})
     for kind, rules in permissions.items():
+        if not isinstance(rules, list):
+            continue
         for path in here:
             rules = [rule.replace(f"({path})", f"({scaffold.GENERATED})") for rule in rules]
         permissions[kind] = list(dict.fromkeys(rules))

@@ -52,6 +52,10 @@ _CONTEXT = re.compile(r"[a-z][a-z0-9_-]*\Z")
 _RESERVED = ("linkml",)  # the prefix of the glossary template's own imports
 
 
+def _prefix(context: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", context)
+
+
 def _as_glob(path: str) -> str:
     """A domain path as the gates match it: from the repository root, and a glob.
 
@@ -82,10 +86,10 @@ class Options:
                 f"--context '{self.context}' must be lower case letters, digits, '-' or '_', "
                 "starting with a letter: it names a file and a table in onto.toml"
             )
-        if self.context in _RESERVED:
+        if _prefix(self.context) in _RESERVED:
             raise ValueError(
-                f"--context '{self.context}' is a prefix every glossary already declares: "
-                "choose another name"
+                f"--context '{self.context}' gives the prefix '{_prefix(self.context)}', which "
+                "every glossary already declares: choose another name"
             )
         if not self.domain_path:
             package = self.context.replace("-", "_")
@@ -116,7 +120,7 @@ class Options:
             ONTO_ANCHORED: self.onto_cmd,
             BASE_URI: self.base_uri,
             "{{context}}": self.context,
-            "{{prefix}}": re.sub(r"[^a-z0-9]", "", self.context),
+            "{{prefix}}": _prefix(self.context),
             "{{domain_path}}": self.domain_path,
             "{{code_dir}}": layer.parent.as_posix(),
         }
@@ -292,6 +296,8 @@ def expand_generated(settings: dict, paths: list[str]) -> dict:
     expanded = copy.deepcopy(settings)
     permissions = expanded.get("permissions", {})
     for kind, rules in permissions.items():
+        if not isinstance(rules, list):
+            continue
         permissions[kind] = [
             each
             for rule in rules
@@ -314,8 +320,13 @@ def merge_settings(theirs: dict, ours: dict) -> dict:
     for key, value in ours.items():
         if key == "permissions":
             permissions = merged.setdefault("permissions", {})
+            if not isinstance(permissions, dict):
+                raise Unmergeable("`permissions` is not an object")
             for kind, rules in value.items():
-                present = permissions.setdefault(kind, []) if isinstance(permissions, dict) else 0
+                if not isinstance(rules, list):
+                    permissions.setdefault(kind, rules)
+                    continue
+                present = permissions.setdefault(kind, [])
                 if not isinstance(present, list):
                     raise Unmergeable(f"`permissions.{kind}` is not a list")
                 present.extend(rule for rule in rules if rule not in present)
@@ -384,7 +395,8 @@ def _beside(root: Path, rel: str, data: bytes, note: str) -> Step:
     """Write what could not be merged next to the file it belongs in, unless that is taken too."""
     path = root / rel
     if path.exists():
-        return Step(UNCHANGED if path.read_bytes() == data else EXISTS, rel)
+        same = path.read_bytes() == data
+        return Step(UNCHANGED if same else EXISTS, rel, "" if same else f"not written. {note}")
     path.write_bytes(data)
     return Step(BESIDE, rel, note)
 

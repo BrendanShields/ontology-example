@@ -107,7 +107,7 @@ the competency questions and the glossary. It does not have to resolve.
 
 - `.gitignore`: missing lines are appended.
 - `Makefile`: `include onto.mk` is appended. The targets start with `onto-`, so they do not replace yours.
-- `.claude/settings.json`: the permission rules and the hook groups are added to yours. A rule that denies editing a generated file is written once for each file your `onto.toml` names, and for `work/evidence/**`. If the file is not plain JSON, or a list under `permissions` or `hooks` has an unexpected shape, yours is left alone and `.claude/settings.onto.json` is written beside it. If that file exists too, it is left alone and reported as `exists`.
+- `.claude/settings.json`: the permission rules and the hook groups are added to yours. If the packaged settings deny editing generated files, that rule is written once for each generated file your `onto.toml` names, and for `work/evidence/**`. If the file is not plain JSON, or a list under `permissions` or `hooks` has an unexpected shape, yours is left alone and `.claude/settings.onto.json` is written beside it. If that file exists too, it is left alone and reported as `exists`.
 - `CLAUDE.md`: if you have one, the section is written to `CLAUDE.onto.md`, unless that file exists too. Copy it in and delete that file.
 - A file where `onto gen` would write, such as an existing `src/loans/generated.py`: `onto init` stops before generating and names the file. Point `pydantic`, `json_schema` or `glossary_json` somewhere else in `onto.toml`, then run `onto gen`.
 

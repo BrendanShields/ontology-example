@@ -168,7 +168,7 @@ def test_init_adds_to_the_files_a_repository_already_had(scaffolded):
 
     settings = json.loads((repo / ".claude/settings.json").read_text(encoding="utf-8"))
     assert settings["model"] == SENTINEL
-    assert settings["permissions"]["deny"] == ["Bash(rm *)"]
+    assert settings["permissions"]["deny"][0] == "Bash(rm *)"
     assert settings["permissions"]["allow"] == ["Bash(ls *)", f"Bash({ONTO_CMD} *)"]
     before_edit = [h["command"] for g in settings["hooks"]["PreToolUse"] for h in g["hooks"]]
     assert before_edit == [SENTINEL, f'cd "$CLAUDE_PROJECT_DIR" && {ONTO_CMD} guard']
@@ -275,6 +275,7 @@ def test_the_files_nobody_edits_are_denied_as_the_adopting_repository_names_them
     scaffold.scaffold(options(tmp_path))
 
     settings = json.loads((tmp_path / ".claude/settings.json").read_text(encoding="utf-8"))
+    assert settings["model"] == SENTINEL
     assert settings["permissions"]["deny"] == [
         "Bash(rm *)",
         "Edit(/ontology/schemas/workflow.schema.json)",
@@ -293,11 +294,12 @@ def test_a_file_already_beside_the_one_that_could_not_be_merged_is_kept_too(tmp_
     (tmp_path / "CLAUDE.md").write_text(SENTINEL, encoding="utf-8")
     (tmp_path / "CLAUDE.onto.md").write_text(SENTINEL, encoding="utf-8")
 
-    steps = {step.path: step.status for step in scaffold.scaffold(options(tmp_path))}
+    steps = {step.path: step for step in scaffold.scaffold(options(tmp_path))}
 
     for rel in (".claude/settings.onto.json", "CLAUDE.onto.md"):
         assert (tmp_path / rel).read_text(encoding="utf-8") == SENTINEL
-        assert steps[rel] == scaffold.EXISTS
+        assert steps[rel].status == scaffold.EXISTS
+        assert "not written" in steps[rel].note
 
 
 def test_a_context_the_existing_onto_toml_does_not_have_gets_no_glossary(tmp_path):
@@ -320,6 +322,7 @@ def test_a_context_the_existing_onto_toml_does_not_have_gets_no_glossary(tmp_pat
         {"base_uri": "https://library.example/a b"},
         {"base_uri": 'https://library.example/a>b"c'},
         {"context": "linkml"},
+        {"context": "link-ml"},
     ],
 )
 def test_options_that_would_scaffold_something_broken_are_refused(tmp_path, bad):

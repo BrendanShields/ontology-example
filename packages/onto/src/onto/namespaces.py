@@ -42,7 +42,7 @@ def shapes_declarations(text: str) -> dict[str, Declared]:
 
 def query_declarations(text: str) -> dict[str, Declared]:
     prologue = parseQuery(text)[0]
-    return {QUERY: [(d.get("prefix") or "", str(d.iri)) for d in prologue if "iri" in d]}
+    return {QUERY: [(d.prefix or "", str(d.iri)) for d in prologue if d.name == "PrefixDecl"]}
 
 
 def files(ws: Workspace) -> list[Path]:
