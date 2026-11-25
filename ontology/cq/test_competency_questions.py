@@ -90,7 +90,10 @@ def test_cq05_returns_the_complete_set(graph, questions):
 
 def test_cq06_gives_the_impact_of_changing_a_term(graph, questions):
     rows = ask(graph, questions, "CQ-06", term="Finding")
-    assert sorted({row["requirement"] for row in rows}) == [f"REQ-000{n}" for n in range(1, 6)]
+    assert sorted({row["requirement"] for row in rows}) == [
+        *(f"REQ-000{n}" for n in range(1, 6)),
+        "REQ-0010",
+    ]
     assert {"TST-0001", "TST-0004"} <= {row.get("test") for row in rows}
 
 

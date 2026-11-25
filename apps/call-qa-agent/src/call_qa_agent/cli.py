@@ -30,7 +30,17 @@ def load_call(path: Path) -> Call:
 
 
 def load_scorecard(path: Path) -> Scorecard:
-    return Scorecard.model_validate(yaml.safe_load(path.read_text(encoding="utf-8")))
+    """The Scorecard in a file. Raises ValueError if two of its Criteria share a criterion_id."""
+    scorecard = Scorecard.model_validate(yaml.safe_load(path.read_text(encoding="utf-8")))
+    names = [criterion.criterion_id for criterion in scorecard.criteria]
+    repeated = sorted({name for name in names if names.count(name) > 1})
+    if repeated:
+        # REQ-0011: one Finding per Criterion means nothing unless a criterion_id names one.
+        raise ValueError(
+            f"Scorecard {scorecard.scorecard_id} has more than one Criterion with the "
+            f"criterion_id {', '.join(repeated)}"
+        )
+    return scorecard
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pytest
 from call_qa_agent.domain import scoring
 from call_qa_agent.generated import Call, Criterion, Scorecard
 from hypothesis import given
@@ -123,3 +124,21 @@ def test_an_evaluation_in_which_nothing_applied_goes_to_a_person(scorecard):
 
     assert evaluation.score == 0
     assert evaluation.disposition == "NEEDS_REVIEW"
+
+
+@pytest.mark.parametrize(
+    "criteria",
+    [["c0", "c0"], ["c0"], [], ["c0", "c1", "c1"], ["c0", "zz"]],
+    ids=["duplicate", "one-missing", "none", "one-extra", "unknown-criterion"],
+)
+def test_no_evaluation_from_duplicate_or_missing_findings(criteria):
+    """REQ-0010: exactly one Finding for each Criterion, or no Evaluation at all."""
+    scorecard = Scorecard(
+        scorecard_id="example-v1",
+        pass_mark=50,
+        criteria=[
+            Criterion(criterion_id=name, statement="A thing.", weight=1) for name in ("c0", "c1")
+        ],
+    )
+    with pytest.raises(ValueError):
+        scoring.conclude(CALL, scorecard, [finding(name, cited=[1]) for name in criteria])

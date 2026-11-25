@@ -33,9 +33,16 @@ def score(findings: list[Finding], scorecard: Scorecard) -> int:
 def conclude(call: Call, scorecard: Scorecard, findings: list[Finding]) -> Evaluation:
     """Build the Evaluation of a Call from one accepted Finding per Criterion.
 
-    The caller is responsible for the Findings being complete and accepted:
-    see `guardrails.check_finding` and `guardrails.check_complete`.
+    Raises ValueError unless there is exactly one Finding for each Criterion
+    (REQ-0010). Whether each Finding is acceptable is still the caller's to
+    check: see `guardrails.check_finding`.
     """
+    judged = sorted(finding.criterion for finding in findings)
+    if judged != sorted(criterion.criterion_id for criterion in scorecard.criteria):
+        raise ValueError(
+            f"an Evaluation needs exactly one Finding for each Criterion of Scorecard "
+            f"{scorecard.scorecard_id}, and the Findings given are for {judged}"
+        )
     _, applied = _weights(findings, scorecard)
     critical_failed = _critical_failed(findings, scorecard)
     points = score(findings, scorecard)
