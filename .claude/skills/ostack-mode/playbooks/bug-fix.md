@@ -7,7 +7,7 @@
 
 Be scientific. Every shipped line traces to runtime evidence. Belt-and-suspenders that "might help" is a hypothesis, not a fix. It does not ship. When evidence refutes a hypothesis, revert what it motivated. The smallest change the evidence justifies ships, nothing more.
 
-Select known non-sensitive fields before printing diagnostic output. Never print an Utterance's text, a whole configuration or an environment.
+Select known non-sensitive fields before printing diagnostic output. Never print a value of a term the glossary classifies as PII or confidential, anything the project's CLAUDE.md says never to print, a whole configuration or an environment.
 
 1. [intake] Name the Requirement the bug breaks. If there is none, the missing Requirement is the first finding: write it with `bin/onto new Requirement` and a Task that implements it.
 2. [intake] Reproduce it yourself, on the matching surface. Ask the user only with a stated, specific reason you cannot reach the target. If it won't reproduce directly, synthesize the trigger, tighten conditions, or instrument until it fires.
