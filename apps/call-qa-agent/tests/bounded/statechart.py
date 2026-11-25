@@ -1,11 +1,13 @@
-"""The evaluation loop as a Mermaid state diagram, drawn from runs of the real loop.
+"""Two Mermaid state diagrams, drawn from runs of the real code.
 
-Nothing in the diagram is written by hand. The states and arrows are what
-`explore.check_loop` saw `agent.evaluate` do, and every arrow label is read
-from the tool results and the outcome of a run, not from the script that
-drove it. The committed copy is docs/evaluation-loop.md.
+Nothing in either is written by hand. In docs/evaluation-loop.md the states
+and arrows are what `explore.check_loop` saw `agent.evaluate` do, and every
+arrow label is read from the tool results and the outcome of a run, not from
+the script that drove it. In docs/publication.md they are what
+`explore.check_ledger` saw the `Ledger` do: each state is read back from the
+ledger file, and each answer is the one the command got.
 
-    cd apps/call-qa-agent && uv run python -m tests.bounded.statechart          # rewrite it
+    cd apps/call-qa-agent && uv run python -m tests.bounded.statechart          # rewrite both
     cd apps/call-qa-agent && uv run python -m tests.bounded.statechart --check  # exit 1 on drift
 """
 
@@ -15,12 +17,17 @@ import json
 import sys
 from pathlib import Path
 
+from call_qa_agent import ledger as ledger_module
+from call_qa_agent.generated import PublicationState, ReviewOutcome
 from call_qa_agent.tools import FINISH_EVALUATION, RECORD_FINDING
 
 from . import explore
 
-COMMITTED = Path(__file__).resolve().parents[2] / "docs" / "evaluation-loop.md"
+DOCS = Path(__file__).resolve().parents[2] / "docs"
+COMMITTED = DOCS / "evaluation-loop.md"
+PUBLICATION = DOCS / "publication.md"
 MAX_TURNS = 3
+MAX_COMMANDS = 4
 REGENERATE = "cd apps/call-qa-agent && uv run python -m tests.bounded.statechart"
 
 ENDS = {
@@ -126,17 +133,106 @@ def render() -> str:
     )
 
 
+NOT_STAGED = "Not staged"
+STAGE_AGAIN = "stage the same Evaluation"
+STAGE_ANOTHER = "stage another Evaluation"
+ASKED = (
+    STAGE_AGAIN,
+    STAGE_ANOTHER,
+    *(f"Review {outcome.value}" for outcome in ReviewOutcome),
+    "publish",
+)
+
+
+def _standing(entry: ledger_module.Entry | None) -> str:
+    """Where an Evaluation stands, as the ledger file says."""
+    if entry is None:
+        return NOT_STAGED
+    if entry.publication_state is not PublicationState.STAGED:
+        return entry.publication_state.value
+    confirmed = any(made.review_outcome == ReviewOutcome.CONFIRMED.value for made in entry.reviews)
+    return f"STAGED, {entry.disposition.value}" + (", CONFIRMED" if confirmed else "")
+
+
+class Publication:
+    def __init__(self) -> None:
+        self.answers: dict[tuple[str, str], set[str]] = {}
+        self.changes: set[tuple[str, str, str]] = set()
+
+    def observe(self, before, command: tuple, got: explore.Answer) -> None:
+        """Fold one command given to the real Ledger into the diagram and the table."""
+        source, target = _standing(before), _standing(got.entry)
+        if command[0] == explore.STAGE:
+            same = before and before.sha256 == ledger_module.digest(explore.EVALUATIONS[command[1]])
+            asked = STAGE_AGAIN if same else STAGE_ANOTHER
+        elif command[0] == explore.REVIEW:
+            asked = f"Review {command[2].value}"
+        else:
+            asked = "publish"
+        answer = got.answer + (f" ({', '.join(got.rules)})" if got.rules else "")
+        self.answers.setdefault((source, asked), set()).add(answer)
+        if target != source:
+            self.changes.add((source, "stage" if command[0] == explore.STAGE else asked, target))
+
+    def mermaid(self) -> str:
+        states = sorted({state for source, _, target in self.changes for state in (source, target)})
+        names = {state: f"s{index}" for index, state in enumerate(states)}
+        ends = sorted(set(states) - {source for source, _, _ in self.changes})
+        lines = ["stateDiagram-v2"]
+        lines += [f'    state "{state}" as {name}' for state, name in names.items()]
+        lines.append(f"    [*] --> {names[NOT_STAGED]}")
+        lines += [f"    {names[s]} --> {names[t]}: {asked}" for s, asked, t in sorted(self.changes)]
+        lines += [f"    {names[end]} --> [*]" for end in ends]
+        return "\n".join(lines) + "\n"
+
+    def table(self) -> str:
+        states = sorted({source for source, _ in self.answers})
+        rows = [
+            "| Where it stands | " + " | ".join(ASKED) + " |",
+            "| --- " * (len(ASKED) + 1) + "|",
+        ]
+        for state in states:
+            cells = [", ".join(sorted(self.answers.get((state, asked), ()))) for asked in ASKED]
+            rows.append(f"| {state} | " + " | ".join(cell or "-" for cell in cells) + " |")
+        return "\n".join(rows) + "\n"
+
+
+def render_publication() -> str:
+    chart = Publication()
+    counted = explore.check_ledger(MAX_COMMANDS, observe=chart.observe)
+    return (
+        "# The publication of an Evaluation\n\n"
+        "<!-- Generated from runs of the real ledger. Do not edit: run\n"
+        f"     {REGENERATE} -->\n\n"
+        f"What the `Ledger` did over {counted['commands']:,} commands: every sequence of up to\n"
+        f"{MAX_COMMANDS} commands over {len(explore.COMMANDS)} commands, for "
+        f"{len(explore.EVALUATIONS)} Evaluations of one Call against one Scorecard\n"
+        f"and {len(explore.REVIEWERS)} reviewers. A state or an answer that needs a longer "
+        "sequence is not shown.\n\n"
+        "Each state is what the ledger file said after a command. An arrow is a command that\n"
+        "changed it. A CONFIRMED Review changes no PublicationState: it is drawn because it\n"
+        "changes what `publish` answers.\n\n"
+        "```mermaid\n" + chart.mermaid() + "```\n\n"
+        "Every answer each command got in each state. `recorded` added a line to the ledger,\n"
+        "`done already` and `refused` added nothing. A refusal names a rule only where the\n"
+        "glossary has one.\n\n" + chart.table()
+    )
+
+
 def main(argv: list[str]) -> int:
-    text = render()
-    if "--check" in argv:
-        if COMMITTED.read_text(encoding="utf-8") == text:
-            return 0
-        print(f"docs/{COMMITTED.name} no longer matches the code. Regenerate it: {REGENERATE}")
-        return 1
-    COMMITTED.parent.mkdir(parents=True, exist_ok=True)
-    COMMITTED.write_text(text, encoding="utf-8")
-    print(f"wrote {COMMITTED}")
-    return 0
+    drifted = False
+    for committed, text in ((COMMITTED, render()), (PUBLICATION, render_publication())):
+        if "--check" in argv:
+            if not committed.is_file() or committed.read_text(encoding="utf-8") != text:
+                print(
+                    f"docs/{committed.name} no longer matches the code. Regenerate it: {REGENERATE}"
+                )
+                drifted = True
+            continue
+        committed.parent.mkdir(parents=True, exist_ok=True)
+        committed.write_text(text, encoding="utf-8")
+        print(f"wrote {committed}")
+    return 1 if drifted else 0
 
 
 if __name__ == "__main__":

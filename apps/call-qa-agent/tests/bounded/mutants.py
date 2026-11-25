@@ -52,6 +52,16 @@ _RECITED = "model_copy(update={'cited_utterances': [2]})"
 _IF_ACCEPTED = "        if not rejections:\n            self.findings.append(finding)"
 _OUTSTANDING = "        rejections = self.outstanding()\n"
 _RECORDED_UNCITED = "self.findings.append(finding.model_copy(update={'cited_utterances': []}))"
+_PUBLICATION = "domain/publication.py"
+_LEDGER = "ledger.py"
+_UNLESS_FINAL = "if Disposition(disposition) is not Disposition.FINAL and not confirmed:"
+_SAME_EVALUATION = "found.sha256 == digest(evaluation)"
+_REVIEW_ASKED = "        record = publication.review(made, found.disposition, found.records)\n"
+_REVIEW_KEPT_ANYWAY = (
+    "        try:\n    " + _REVIEW_ASKED + "        except publication.Refused:\n"
+    '            self._append({"review": _plain(made)})\n            raise\n'
+)
+_PUBLISHED_ALREADY = "        if found.publication_state is PublicationState.PUBLISHED:\n            return False"
 
 MUTANTS = [
     Mutant("evaluation-loses-its-score", _SCORING, "score=points,", "score=0,", "scoring", "S1"),
@@ -97,6 +107,26 @@ MUTANTS = [
     Mutant("outstanding-rejections-dropped", "agent.py", "        session.outstanding(),\n    )", "        [],\n    )", "loop", "L4"),
     Mutant("tool-result-dropped", "agent.py", "            results.append(\n", "            results.clear()\n            results.append(\n", "loop", "L5"),
     Mutant("returned-evaluation-rescored", "agent.py", _EVALUATION_RETURNED, _EVALUATION_RETURNED + ".model_copy(update={'score': 0})", "loop", "L6"),
+    Mutant("staged-as-published", _PUBLICATION, "        PublicationState.STAGED,\n        records,", "        PublicationState.PUBLISHED,\n        records,", "ledger", "P1"),
+    Mutant("same-disposition-taken-for-the-same-evaluation", _LEDGER, _SAME_EVALUATION, "found.disposition.value == evaluation.disposition", "ledger", "P2"),
+    Mutant("published-without-a-review", _PUBLICATION, _UNLESS_FINAL, "if False:", "ledger", "P3"),
+    Mutant("review-required-misnamed", _PUBLICATION, "rejection_rule=RejectionRule.REVIEW_REQUIRED", "rejection_rule=RejectionRule.MISSING_FINDING", "ledger", "P4"),
+    Mutant("refusal-of-a-review-names-a-rule", _PUBLICATION, "it stands without a Review\"\n        )", "it stands without a Review\",\n            [Rejection(rejection_rule=RejectionRule.MISSING_FINDING, detail='d')],\n        )", "ledger", "P4"),
+    Mutant("withheld-asked-for-a-review-it-cannot-use", _PUBLICATION, "PublicationState.WITHHELD: (),", "PublicationState.WITHHELD: (PublicationState.PUBLISHED,),", "ledger", "P4"),
+    Mutant("withheld-can-be-withheld-again", _PUBLICATION, "PublicationState.WITHHELD: (),", "PublicationState.WITHHELD: (PublicationState.WITHHELD,),", "ledger", "P5"),
+    Mutant("published-can-be-withheld", _PUBLICATION, "PublicationState.PUBLISHED: (),", "PublicationState.PUBLISHED: (PublicationState.WITHHELD,),", "ledger", "P5"),
+    Mutant("overturned-leaves-it-staged", _PUBLICATION, "case ReviewOutcome.CONFIRMED:", "case ReviewOutcome.CONFIRMED | ReviewOutcome.OVERTURNED:", "ledger", "P6"),
+    Mutant("review-forgotten-on-reading", _LEDGER, "reviews=(*found.reviews, made)", "reviews=found.reviews", "ledger", "P6"),
+    Mutant("final-evaluation-reviewed", _PUBLICATION, "    if Disposition(disposition) is Disposition.FINAL:", "    if False:", "ledger", "P7"),
+    Mutant("final-evaluation-needs-a-review", _PUBLICATION, _UNLESS_FINAL, "if not confirmed:", "ledger", "P8"),
+    Mutant("withheld-in-the-name-of-the-call", _PUBLICATION, "actor=made.reviewer,", "actor=made.call,", "ledger", "P9"),
+    Mutant("confirmed-review-gets-an-audit-record", _LEDGER, "        if record is not None:\n            line[\"audit_record\"] = _plain(record)", "        line[\"audit_record\"] = _plain(AuditRecord(call=call, scorecard=scorecard, publication_state=found.publication_state, actor=reviewer, recorded_at=made.reviewed_at))", "ledger", "P13"),
+    Mutant("score-on-the-ledger", _LEDGER, '"sha256": digest(evaluation),\n            }', '"sha256": digest(evaluation),\n                "score": evaluation.score,\n            }', "ledger", "P10"),
+    Mutant("rationale-beside-a-review", _LEDGER, 'line = {"review": _plain(made)}', 'line = {"review": {**_plain(made), "rationale": "r"}}', "ledger", "P10"),
+    Mutant("refused-review-kept", _LEDGER, _REVIEW_ASKED, _REVIEW_KEPT_ANYWAY, "ledger", "P11"),
+    Mutant("review-recorded-twice", _LEDGER, "(made.reviewer, made.review_outcome) == (reviewer, outcome.value)", "False", "ledger", "P12"),
+    Mutant("published-twice-is-refused", _LEDGER, _PUBLISHED_ALREADY, "        if False:\n            return False", "ledger", "P12"),
+    Mutant("another-evaluation-staged-over-the-first", _LEDGER, "evaluation, found.records if found else (), actor=SYSTEM", "evaluation, (), actor=SYSTEM", "ledger", "P13"),
 ]
 
 

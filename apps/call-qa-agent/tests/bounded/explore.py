@@ -1,16 +1,17 @@
 """Bounded exploration of the write path: every case within a stated bound, through the real code.
 
 Nothing here re-models the code. Every Evaluation is built by the real
-`scoring.conclude`, every state is a real `EvaluationSession`, and every loop
-run is the real `agent.evaluate` answered by a scripted client. The only
-hand-written logic is the oracle: the properties, written from the Requirement
-sentences in work/ and the glossary, not from the code.
+`scoring.conclude`, every state is a real `EvaluationSession`, every loop
+run is the real `agent.evaluate` answered by a scripted client, and every
+ledger is a real file written by the real `Ledger`. The only hand-written
+logic is the oracle: the properties, written from the Requirement sentences in
+work/ and the glossary, not from the code.
 
 A check that returns has held for every case within its bound. That is not a
 proof: a fault that needs a larger Scorecard, a longer script or an input
 outside the alphabet below is not covered.
 
-    cd apps/call-qa-agent && uv run python -m tests.bounded.explore [scoring|session|loop]
+    cd apps/call-qa-agent && uv run python -m tests.bounded.explore [scoring|session|loop|ledger]
 
 A violation names the property and the first case that breaks it. Cases are
 visited smallest first, and a case is described by ids, outcomes, weights and
@@ -21,15 +22,21 @@ from __future__ import annotations
 
 import copy
 import itertools
+import json
 import sys
+import tempfile
 from collections import deque
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from types import SimpleNamespace
 
 from call_qa_agent import agent as agent_module
-from call_qa_agent.domain import scoring
+from call_qa_agent import ledger as ledger_module
+from call_qa_agent.domain import publication, scoring
 from call_qa_agent.generated import (
+    AuditRecord,
     Call,
     Criterion,
     Disposition,
@@ -37,7 +44,10 @@ from call_qa_agent.generated import (
     EvaluationOutcome,
     Finding,
     FindingOutcome,
+    PublicationState,
     RejectionRule,
+    Review,
+    ReviewOutcome,
     Scorecard,
     Speaker,
 )
@@ -86,6 +96,20 @@ PROPERTIES = {
     "L4": "with no Evaluation, the outstanding Rejections are the Criteria with no Finding",
     "L5": "every tool call of a turn is answered once, in order, in the next request",
     "L6": "the Evaluation is the one the domain layer computes from the accepted Findings",
+    # ledger: REQ-0016 to REQ-0025
+    "P1": "staging an Evaluation of a Call and Scorecard that have none on the ledger gives STAGED",
+    "P2": "another Evaluation of the same Call against the same Scorecard is refused and changes nothing",
+    "P3": "an Evaluation whose disposition is not FINAL is PUBLISHED only after a Review CONFIRMED it",
+    "P4": "publishing without the Review it needs is answered with REVIEW_REQUIRED alone, and no other refusal names a rule",
+    "P5": "once an Evaluation is PUBLISHED or WITHHELD its state never changes and nothing more is recorded of it",
+    "P6": "an OVERTURNED Review gives WITHHELD, a CONFIRMED one is recorded and leaves the Evaluation STAGED",
+    "P7": "a Review is recorded only of a STAGED Evaluation whose disposition is not FINAL",
+    "P8": "a STAGED Evaluation that is FINAL, or that a Review CONFIRMED, is PUBLISHED when asked",
+    "P9": "a change of state adds exactly one AuditRecord, of the state entered, by its actor at its time, and nothing else adds one",
+    "P10": "a line of the ledger holds identifiers, states, times and a digest under known names, and nothing else",
+    "P11": "a refused command adds nothing to the ledger, and no command changes a line already there",
+    "P12": "a command given again is answered as done already and adds nothing",
+    "P13": "the ledger reads back without complaint as what the commands were answered",
 }
 
 
@@ -570,7 +594,316 @@ def check_loop(max_turns: int = 4, observe: Callable[[Run], None] | None = None)
     return {"runs": runs}
 
 
-CHECKS = {"scoring": check_scoring, "session": check_session, "loop": check_loop}
+# --------------------------------------------------------------------------- the ledger
+
+LEDGER_CARD = make_scorecard([1, 1], [True, False])
+
+
+def _concluded(*outcomes: str) -> Evaluation:
+    return scoring.conclude(
+        CALL,
+        LEDGER_CARD,
+        [
+            Finding(
+                criterion=f"c{index}", finding_outcome=outcome, cited_utterances=[1], rationale="r"
+            )
+            for index, outcome in enumerate(outcomes)
+        ],
+    )
+
+
+# Four Evaluations of the one Call against the one Scorecard, two of each disposition.
+# NEEDS_REVIEW has two causes and both are here: a failed critical Criterion, and nothing applied.
+EVALUATIONS = {
+    "stands": _concluded(MET, MET),
+    "stands-too": _concluded(MET, NOT_MET),
+    "critical-failure": _concluded(NOT_MET, MET),
+    "nothing-applied": _concluded(NOT_APPLICABLE, NOT_APPLICABLE),
+}
+REVIEWERS = ("QA-1", "QA-2")
+STAGE, REVIEW, PUBLISH = "stage", "review", "publish"
+# The alphabet: every command there is, on the one Call and Scorecard.
+COMMANDS = (
+    *((STAGE, name) for name in EVALUATIONS),
+    *((REVIEW, reviewer, outcome) for reviewer in REVIEWERS for outcome in ReviewOutcome),
+    (PUBLISH,),
+)
+KEY = (CALL.call_id, LEDGER_CARD.scorecard_id)
+TERMINAL = (PublicationState.PUBLISHED, PublicationState.WITHHELD)
+LINE_NAMES = {
+    "audit_record": set(AuditRecord.model_fields),
+    "review": set(Review.model_fields),
+    "disposition": None,
+    "sha256": None,
+}
+
+RECORDED = "recorded"
+DONE_ALREADY = "done already"
+REFUSED = "refused"
+
+
+@dataclass(frozen=True)
+class Known:
+    """What the Requirements say the ledger holds after the commands so far."""
+
+    staged: str | None = None  # the name of the Evaluation on the ledger
+    state: PublicationState | None = None
+    reviews: tuple[tuple[str, ReviewOutcome], ...] = ()
+    records: int = 0
+
+    @property
+    def disposition(self) -> Disposition | None:
+        return Disposition(EVALUATIONS[self.staged].disposition) if self.staged else None
+
+    @property
+    def confirmed(self) -> bool:
+        return any(outcome is ReviewOutcome.CONFIRMED for _, outcome in self.reviews)
+
+
+def wanted(known: Known, command: tuple) -> tuple[str, bool, Known]:
+    """The oracle for the ledger: (the answer, whether REVIEW_REQUIRED is why, what is then known).
+
+    Written from REQ-0016 to REQ-0025 and DEC-0012, not from ledger.py.
+    """
+    refused = (REFUSED, False, known)
+    done_already = (DONE_ALREADY, False, known)
+    if command[0] == STAGE:
+        if known.staged is None:  # REQ-0022
+            return RECORDED, False, Known(command[1], PublicationState.STAGED, (), 1)
+        return done_already if known.staged == command[1] else refused  # REQ-0024, REQ-0023
+    if command[0] == REVIEW:
+        made = (command[1], command[2])
+        if known.staged is None:
+            return refused
+        if made in known.reviews:  # REQ-0024
+            return done_already
+        if known.state is not PublicationState.STAGED or known.disposition is Disposition.FINAL:
+            return refused  # REQ-0018, REQ-0020
+        withheld = command[2] is ReviewOutcome.OVERTURNED  # REQ-0019
+        return (
+            RECORDED,
+            False,
+            replace(
+                known,
+                state=PublicationState.WITHHELD if withheld else known.state,
+                reviews=(*known.reviews, made),
+                records=known.records + withheld,
+            ),
+        )
+    if known.state is PublicationState.PUBLISHED:  # REQ-0024
+        return done_already
+    if known.state is not PublicationState.STAGED:  # REQ-0018, and nothing is staged
+        return refused
+    if known.disposition is not Disposition.FINAL and not known.confirmed:
+        return REFUSED, True, known  # REQ-0016, REQ-0017
+    published = replace(known, state=PublicationState.PUBLISHED, records=known.records + 1)
+    return RECORDED, False, published  # REQ-0025
+
+
+@dataclass
+class Clock:
+    """Stands in for the time of day: each reading is one second after the last."""
+
+    at: datetime = datetime(2026, 1, 1, tzinfo=UTC)
+
+    def __call__(self) -> datetime:
+        self.at += timedelta(seconds=1)
+        return self.at
+
+
+@dataclass
+class Answer:
+    """What one command given to the real Ledger showed from the outside."""
+
+    answer: str
+    rules: list[str]
+    lines: list[str]  # the lines it added to the file
+    entry: ledger_module.Entry | None
+    asked_at: datetime
+
+
+def give(path: Path, clock: Clock, command: tuple, script: tuple = ()) -> Answer:
+    """Give one command to the real Ledger over the file, and read the file before and after.
+
+    `script` is the commands the file already holds the effect of: it is only shown.
+    """
+    case = {"commands": [_shown(c) for c in (*script, command)]}
+    before = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
+    ledger = ledger_module.Ledger(path, clock)
+    asked_at, rules = clock.at, []
+    try:
+        if command[0] == STAGE:
+            recorded = ledger.stage(EVALUATIONS[command[1]])
+        elif command[0] == REVIEW:
+            recorded = ledger.review(*KEY, command[1], command[2])
+        else:
+            recorded = ledger.publish(*KEY)
+        answer = RECORDED if recorded else DONE_ALREADY
+    except publication.Refused as refused:
+        answer = REFUSED
+        rules = [_value(rejection.rejection_rule) for rejection in refused.rejections]
+    after = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
+    lines = after[len(before) :]
+    # Both are read from the file as text, before anything tries to make sense of it.
+    require(after[: len(before)] == before, "P11", **case)
+    require(not (answer == REFUSED and lines), "P11", **case, lines=len(lines))
+    for line in lines:
+        held = json.loads(line)
+        named = all(
+            name in LINE_NAMES and (LINE_NAMES[name] is None or set(held[name]) <= LINE_NAMES[name])
+            for name in held
+        )
+        require(named, "P10", **case, names=sorted(held))
+    try:
+        entry = ledger_module.Ledger(path, clock).entry(*KEY)
+    except ledger_module.Corrupt:
+        raise PropertyViolation("P13", {**case, "read": "Corrupt"}) from None
+    return Answer(answer, rules, lines, entry, asked_at)
+
+
+def _shown(command: tuple) -> str:
+    return " ".join(_value(part) for part in command)
+
+
+def _standing(entry: ledger_module.Entry | None) -> PublicationState | None:
+    return entry.publication_state if entry else None
+
+
+def check_ledger(max_commands: int = 4, observe: Callable | None = None) -> dict:
+    """The real Ledger, on a real file, under every sequence of up to `max_commands` commands.
+
+    The bound: one Call and one Scorecard, four Evaluations of them (two of
+    each disposition, NEEDS_REVIEW by each of its two causes), two reviewers,
+    and the nine commands of COMMANDS: stage each Evaluation, each reviewer's
+    Review with each outcome, and publish. Every command is also given a
+    second time straight after the first.
+
+    A sequence that starts like another shares its first commands with it:
+    the file is put back as it was before each next command is tried.
+    """
+    dispositions = sorted(evaluation.disposition for evaluation in EVALUATIONS.values())
+    assert dispositions == sorted(2 * [disposition.value for disposition in Disposition])
+    sequences = commands = 0
+    with tempfile.TemporaryDirectory() as folder:
+        path = Path(folder) / "ledger.jsonl"
+        clock = Clock()
+        frontier: deque[tuple[tuple, Known, str]] = deque([((), Known(), "")])
+        while frontier:
+            script, known, text = frontier.popleft()  # breadth first: the fewest commands first
+            sequences += 1
+            if len(script) == max_commands:
+                continue
+            for command in COMMANDS:
+                path.write_text(text, encoding="utf-8")
+                before = ledger_module.Ledger(path, clock).entry(*KEY)
+                want, review_required, then = wanted(known, command)
+                got = give(path, clock, command, script)
+                commands += 1
+                _check_answer(script, command, known, before, want, review_required, then, got)
+                if observe is not None:
+                    observe(before, command, got)
+                after = path.read_text(encoding="utf-8")
+
+                again = give(path, clock, command, (*script, command))
+                case = {"commands": [_shown(c) for c in (*script, command)], "again": True}
+                if got.answer == REFUSED:
+                    require(again.answer == REFUSED and again.rules == got.rules, "P12", **case)
+                else:
+                    require(again.answer == DONE_ALREADY, "P12", **case, answer=again.answer)
+                require(not again.lines and again.entry == got.entry, "P12", **case)
+
+                frontier.append(((*script, command), then, after))
+    return {"sequences": sequences, "commands": commands}
+
+
+def _check_answer(
+    script: tuple,
+    command: tuple,
+    known: Known,
+    before: ledger_module.Entry | None,
+    want: str,
+    review_required: bool,
+    then: Known,
+    got: Answer,
+) -> None:
+    case = {
+        "commands": [_shown(c) for c in (*script, command)],
+        "answer": got.answer,
+        "state": getattr(_standing(got.entry), "value", None),
+    }
+    state, was = _standing(got.entry), _standing(before)
+    reviews = (
+        [(r.reviewer, ReviewOutcome(r.review_outcome)) for r in got.entry.reviews]
+        if got.entry
+        else []
+    )
+    added = len(got.entry.records) - len(before.records if before else ()) if got.entry else 0
+
+    require(not (was in TERMINAL and (got.entry != before or got.lines)), "P5", **case)
+    if state is PublicationState.PUBLISHED and got.entry.disposition is not Disposition.FINAL:
+        # Read from the ledger alone: the CONFIRMED Review comes before the AuditRecord of PUBLISHED.
+        published_at = got.entry.records[-1].recorded_at
+        confirmed = any(
+            ReviewOutcome(r.review_outcome) is ReviewOutcome.CONFIRMED
+            and r.reviewed_at <= published_at
+            for r in got.entry.reviews
+        )
+        require(confirmed, "P3", **case)
+
+    if command[0] == STAGE:
+        if want == RECORDED:
+            staged = (
+                got.answer == RECORDED
+                and state is PublicationState.STAGED
+                and got.entry.disposition is Disposition(EVALUATIONS[command[1]].disposition)
+            )
+            require(staged, "P1", **case)
+        elif want == REFUSED:
+            require(got.answer == REFUSED and got.entry == before, "P2", **case)
+    elif command[0] == REVIEW:
+        if want == REFUSED:
+            require(got.answer == REFUSED and got.entry == before, "P7", **case)
+        elif want == RECORDED:
+            taken = got.answer == RECORDED and reviews == list(then.reviews) and state is then.state
+            require(taken, "P6", **case)
+    elif review_required:
+        require(got.answer == REFUSED and state is was, "P3", **case)
+        require(got.rules == [RejectionRule.REVIEW_REQUIRED.value], "P4", **case, rules=got.rules)
+    elif want == RECORDED:
+        require(got.answer == RECORDED and state is PublicationState.PUBLISHED, "P8", **case)
+    if got.answer == REFUSED and not review_required:
+        require(got.rules == [], "P4", **case, rules=got.rules)
+    if want == DONE_ALREADY:
+        require(got.answer == DONE_ALREADY and not got.lines, "P12", **case)
+
+    require(added == (state is not was), "P9", **case, audit_records=added)
+    if added == 1:
+        record = got.entry.records[-1]
+        actor = command[1] if command[0] == REVIEW else ledger_module.SYSTEM
+        whole = (
+            (record.call, record.scorecard) == KEY
+            and PublicationState(record.publication_state) is state
+            and record.actor == actor
+            and got.asked_at < record.recorded_at <= got.asked_at + timedelta(seconds=2)
+        )
+        require(whole, "P9", **case)
+    held = (
+        (then.staged and ledger_module.digest(EVALUATIONS[then.staged]))
+        == (got.entry.sha256 if got.entry else None)
+        and state is then.state
+        and reviews == list(then.reviews)
+        and (len(got.entry.records) if got.entry else 0) == then.records
+        and got.answer == want
+    )
+    require(held, "P13", **case, want=want)
+
+
+CHECKS = {
+    "scoring": check_scoring,
+    "session": check_session,
+    "loop": check_loop,
+    "ledger": check_ledger,
+}
 
 
 def main(argv: list[str]) -> int:
