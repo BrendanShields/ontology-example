@@ -1,0 +1,3 @@
+ts	phase	decision	why	evidence	result
+2026-11-25T12:13:03Z	intake	write REQ-0010: no Evaluation unless there is exactly one Finding for each Criterion	bounded exploration showed scoring.conclude returns 100 PASS FINAL for two Findings on one Criterion of two, and no Requirement covered the domain function	scoring.conclude probe: duplicate -> 100 PASS FINAL, one missing -> 100 PASS FINAL, none -> 0 FAIL NEEDS_REVIEW, unknown -> KeyError	reproduced
+2026-11-25T12:13:03Z	design	raise ValueError in scoring.conclude, add no RejectionRule value	the write path already answers a model with Rejections; this guards a caller that skipped it, and a new rule would need an ontology change	ontology/domains/call-qa.yaml RejectionRule; session.py is the only caller	accepted
