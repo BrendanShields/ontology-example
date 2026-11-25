@@ -8,9 +8,12 @@ evidence?) live in the SHACL gates and run on the graph: see gates.py.
 from __future__ import annotations
 
 import difflib
+import os
 import re
+import subprocess
 
 from . import ears
+from .config import Config, matches
 from .glossary import Glossary, Resolution
 from .report import ERROR, WARNING, Violation
 from .textscan import DeniedMatcher
@@ -117,6 +120,41 @@ def validate_item(ws: Workspace, item: WorkItem) -> list[Violation]:
 
     if item.cls == "Requirement":
         problems.extend(_requirement_problems(item, glossary))
+        if item.id in _earlier_versions(ws, item):
+            problem(
+                "replaces-cycle",
+                "replaces leads back to this Requirement: a Requirement replaces an earlier one",
+                "replaces",
+            )
+        successors = [r for r in ws.of_class("Requirement") if item.id in r.values("replaces")]
+        settled = any(r.status in ("done", "superseded") for r in successors)
+        if item.status == "superseded" and successors and not settled:
+            waiting = ", ".join(f"{r.id} ({r.status})" for r in successors)
+            problem(
+                "withdrawn-early",
+                f"status is superseded, but what replaces it is not done yet: {waiting}. "
+                "Until then no Requirement is in force in its place",
+                "status",
+                severity=WARNING,
+                fix="keep the earlier status until the Requirement that replaces it is done",
+            )
+    if item.cls == "Incident":
+        if item.status == "superseded":
+            problem(
+                "incident-superseded",
+                "status is superseded, which would close the Incident with no Requirement: "
+                "an Incident is closed as done, by the Requirements that fix it",
+                "status",
+                found=item.status,
+                fix="set it done once each Requirement it breaks or that was raised from it "
+                "is done; delete an Incident that was recorded by mistake",
+            )
+        if not item.meta.get("observed_on"):
+            problem(
+                "incident-undated",
+                "observed_on is missing: an Incident says when it was observed",
+                severity=WARNING,
+            )
     if item.cls == "Test":
         for value in item.values("path"):
             file_part = value.split("::", 1)[0]
@@ -128,9 +166,60 @@ def validate_item(ws: Workspace, item: WorkItem) -> list[Violation]:
                     found=value,
                 )
 
+    if item.cls == "Decision" and item.status != "superseded":
+        files = repository_files(ws.cfg) if item.values("affects") else []
+        for glob in item.values("affects"):
+            if not any(matches(rel, (glob,)) for rel in files):
+                problem(
+                    "stale-affects",
+                    f"affects names '{glob}', which matches no file in the repository",
+                    "affects",
+                    severity=WARNING,
+                    found=glob,
+                    fix="write the glob from the repository root, or take it out if the "
+                    "files it named are gone",
+                )
+
     if glossary is not None:
         problems.extend(_denied_in_prose(item, glossary))
     return problems
+
+
+def _earlier_versions(ws: Workspace, item: WorkItem) -> set[str]:
+    """Every Requirement reached from this one by following `replaces`."""
+    reached: set[str] = set()
+    ahead = item.values("replaces")
+    while ahead:
+        earlier = ahead.pop()
+        if earlier not in reached:
+            reached.add(earlier)
+            if earlier in ws.by_id:
+                ahead.extend(ws.by_id[earlier].values("replaces"))
+    return reached
+
+
+SKIPPED_FOLDERS = ("node_modules", "__pycache__")
+
+
+def repository_files(cfg: Config) -> list[str]:
+    """Every file of the repository, relative to its root: what git tracks or would track.
+
+    Outside a git repository the folders are walked instead, leaving out hidden
+    ones and those no one writes by hand.
+    """
+    listed = subprocess.run(
+        ["git", "-C", str(cfg.root), "ls-files", "--cached", "--others", "--exclude-standard"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if listed.returncode == 0:
+        return [rel for rel in listed.stdout.splitlines() if (cfg.root / rel).is_file()]
+    found: list[str] = []
+    for folder, folders, names in os.walk(cfg.root):
+        folders[:] = [f for f in folders if not f.startswith(".") and f not in SKIPPED_FOLDERS]
+        found.extend(cfg.rel(os.path.join(folder, name)) for name in names)
+    return found
 
 
 # --- shape -----------------------------------------------------------------------

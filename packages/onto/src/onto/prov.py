@@ -3,7 +3,10 @@
 A bundle answers "what did this change rest on?" in a form an auditor's tools
 can read: the Change (a prov:Activity), the agent that made it, the
 requirements and decisions it used, the tests that verify those requirements
-and the evidence of their last run.
+and the evidence of their last run. Where a requirement came from is in it too:
+the earlier Requirements it replaces, back to the first, and the Incidents it
+answers. Those are carried as they stand, and the Change is not said to have
+used them.
 
 Most of it is a plain extract of the traceability graph, which already carries
 PROV types and properties through workflow.yaml. Three statements are added
@@ -84,12 +87,37 @@ def read_log(path: Path) -> list[dict[str, str]]:
 # --- bundles -----------------------------------------------------------------------
 
 
+def served(ws: Workspace, change: WorkItem) -> list[WorkItem]:
+    """The Requirements a Change serves: those its Tasks implement."""
+    tasks = [ws.by_id[t] for t in change.values("resolves") if t in ws.by_id]
+    ids = {r for task in tasks for r in task.values("implements") if r in ws.by_id}
+    return [ws.by_id[r] for r in sorted(ids)]
+
+
+def origins(ws: Workspace, requirements: list[WorkItem]) -> list[WorkItem]:
+    """Where Requirements came from: what each replaces, all the way back, and its Incidents."""
+    earlier: dict[str, WorkItem] = {}
+    queue = list(requirements)
+    while queue:
+        for target in queue.pop().values("replaces"):
+            item = ws.by_id.get(target)
+            if item is not None and item.cls == "Requirement" and target not in earlier:
+                earlier[target] = item
+                queue.append(item)
+    ids = {r.id for r in requirements}
+    raised_from = {target for r in requirements for target in r.values("raised_from")}
+    incidents = [
+        i for i in ws.of_class("Incident") if i.id in raised_from or set(i.values("breaks")) & ids
+    ]
+    return [*(earlier[key] for key in sorted(earlier) if key not in ids), *incidents]
+
+
 def change_closure(ws: Workspace, change: WorkItem) -> list[WorkItem]:
-    """Everything a Change traces to: tasks, requirements, tests, evidence, decisions."""
+    """Everything a Change traces to: tasks, requirements, tests, evidence, decisions, origins."""
     glossary = ws.glossary(change.context)
     tasks = [ws.by_id[t] for t in change.values("resolves") if t in ws.by_id]
-    requirement_ids = {r for task in tasks for r in task.values("implements") if r in ws.by_id}
-    requirements = [ws.by_id[r] for r in sorted(requirement_ids)]
+    requirements = served(ws, change)
+    requirement_ids = {r.id for r in requirements}
     tests = [t for t in ws.of_class("Test") if set(t.values("verifies")) & requirement_ids]
     test_ids = {t.id for t in tests}
     evidence = [e for e in ws.of_class("Evidence") if set(e.values("of_test")) & test_ids]
@@ -99,7 +127,15 @@ def change_closure(ws: Workspace, change: WorkItem) -> list[WorkItem]:
 
     used = set().union(*(terms(r) for r in requirements)) if requirements else set()
     decisions = [d for d in decisions_in_force(ws, change.context) if terms(d) & used]
-    return [change, *tasks, *requirements, *tests, *evidence, *decisions]
+    return [
+        change,
+        *tasks,
+        *requirements,
+        *tests,
+        *evidence,
+        *decisions,
+        *origins(ws, requirements),
+    ]
 
 
 def bundle(ws: Workspace, graph: WorkGraph, change: WorkItem, log_dir: Path | None = None) -> Graph:
@@ -121,8 +157,9 @@ def bundle(ws: Workspace, graph: WorkGraph, change: WorkItem, log_dir: Path | No
                 for term_triple in graph.rdf.triples((triple[2], None, None)):
                     out.add(term_triple)
 
+    used = {r.id for r in served(ws, change)}
     for item in members:
-        if item.cls in ("Requirement", "Decision"):
+        if item.cls == "Decision" or item.id in used:
             out.add((node, PROV.used, URIRef(work + item.id)))
         elif item.cls == "Evidence":
             for test in item.values("of_test"):

@@ -13,7 +13,7 @@ This repository carries an ontology layer that governs how its code is built.
 ## Layout
 
 - `ontology/workflow.yaml` types the work itself. `ontology/domains/<context>.yaml` is a bounded context's glossary.
-- `work/` holds the typed work items: REQ, TASK, DEC, TST, CHG, OCR. Create them with `{{onto_cmd}} new`.
+- `work/` holds the typed work items: REQ, TASK, DEC, TST, CHG, OCR, INC. Create them with `{{onto_cmd}} new`.
 - The `domain_paths` of a context in `onto.toml` are its domain layer: glossary vocabulary only, generated types only.
 
 ## Rules the hooks enforce

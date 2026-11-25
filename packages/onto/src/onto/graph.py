@@ -87,11 +87,14 @@ class WorkGraph:
         )
         return store
 
-    def select(self, sparql: str, **bindings: str) -> list[dict[str, str]]:
+    def select(
+        self, sparql: str, text: dict[str, str] | None = None, /, **bindings: str
+    ) -> list[dict[str, str]]:
         """Run a SELECT query. Rows are plain dicts of shortened strings.
 
         Keyword arguments pre-bind variables of the SELECT clause, given as work
         item ids, term names, CURIEs or IRIs: `graph.select(q, term="Scorecard")`.
+        `text` pre-binds variables to plain strings, such as a path, instead.
         """
         import pyoxigraph
 
@@ -100,6 +103,8 @@ class WorkGraph:
             pyoxigraph.Variable(name): pyoxigraph.NamedNode(str(self.node(value)))
             for name, value in bindings.items()
         }
+        for name, value in (text or {}).items():
+            substitutions[pyoxigraph.Variable(name)] = pyoxigraph.Literal(value)
         results = self._store.query(sparql, substitutions=substitutions or None)
         if isinstance(results, pyoxigraph.QueryBoolean):
             return [{"ask": str(bool(results)).lower()}]

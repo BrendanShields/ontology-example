@@ -1,0 +1,14 @@
+# CQ-09: What replaced a Requirement, all the way forward?
+# bind: requirement
+#
+# Follows prov:wasRevisionOf from the later Requirement to the earlier one as
+# far as it goes. Decisions use the same predicate for supersedes, so both ends
+# are held to be Requirements. The last row with status done is the rule in force.
+PREFIX wf:   <{{base_uri}}/ontology/workflow/>
+PREFIX prov: <http://www.w3.org/ns/prov#>
+
+SELECT ?requirement ?later ?status ?title WHERE {
+  ?requirement a wf:Requirement .
+  ?later prov:wasRevisionOf+ ?requirement ; a wf:Requirement ; wf:status ?status ; wf:title ?title .
+}
+ORDER BY ?later

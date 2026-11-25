@@ -1,0 +1,24 @@
+# CQ-08: Which Incidents have no verified fix?
+#
+# An Incident is fixed by Requirements, as gate:ClosedIncidentIsFixed reads it:
+# every Requirement it breaks and every Requirement raised from it is done (and
+# so verified, by the traceability gate) or superseded, and there is at least
+# one of them. One row per Requirement still waited on. An Incident that names
+# no Requirement at all has one row with no requirement.
+PREFIX wf: <{{base_uri}}/ontology/workflow/>
+
+SELECT ?incident ?status ?requirement ?requirement_status WHERE {
+  {
+    ?incident a wf:Incident ; wf:status ?status .
+    { ?incident wf:breaks ?requirement } UNION { ?requirement wf:raised_from ?incident }
+    ?requirement wf:status ?requirement_status .
+    FILTER (?requirement_status NOT IN ("done", "superseded"))
+  }
+  UNION
+  {
+    ?incident a wf:Incident ; wf:status ?status .
+    FILTER NOT EXISTS { ?incident wf:breaks ?broken }
+    FILTER NOT EXISTS { ?raised wf:raised_from ?incident }
+  }
+}
+ORDER BY ?incident ?requirement

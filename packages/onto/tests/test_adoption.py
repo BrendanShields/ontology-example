@@ -456,6 +456,143 @@ def test_a_requirement_goes_from_written_to_verified(adopter):
     assert "work/evidence" not in ignored.stdout
 
 
+# --- after ship --------------------------------------------------------------------
+
+
+def set_status(repo: Path, identifier: str, status: str) -> None:
+    path = repo / f"work/{identifier}.md"
+    text, count = re.subn(r"(?m)^status: .*$", f"status: {status}", path.read_text("utf-8"))
+    assert count == 1, identifier
+    path.write_text(text, encoding="utf-8")
+
+
+def new(repo: Path, cls: str, *fields: str) -> str:
+    created = onto(repo, "new", cls, "bounded_context=loans", *fields)
+    assert created.returncode == 0, created.stdout + created.stderr
+    return created.stdout.strip().removeprefix("work/").removesuffix(".md")
+
+
+def collect(repo: Path) -> None:
+    tested = run(
+        repo, sys.executable, "-m", "pytest", "--onto-evidence", "--rootdir", ".",
+        "-p", "no:cacheprovider", "tests",
+    )  # fmt: skip
+    assert tested.returncode == 0, tested.stdout + tested.stderr
+
+
+def owner_test(repo: Path) -> None:
+    (repo / "tests").mkdir()
+    (repo / "tests/test_owner.py").write_text(
+        "def test_an_item_has_its_owner():\n    assert {'item': 'owner'}['item'] == 'owner'\n",
+        encoding="utf-8",
+    )
+
+
+OWNER_TEST = "path=tests/test_owner.py::test_an_item_has_its_owner"
+
+
+def test_an_incident_is_closed_only_by_a_verified_requirement(adopter):
+    incident = new(
+        adopter, "Incident", "title=An item was shown with no owner",
+        "observed_on=2026-03-02", "status=in_progress",
+    )  # fmt: skip
+    assert incident == "INC-0001"
+    requirement = new(
+        adopter, "Requirement", "title=Every item has an owner",
+        "ears_text=The system shall record one `Owner` for each `Item`.",
+        "uses_terms=Owner,Item", "status=in_progress", f"raised_from={incident}",
+    )  # fmt: skip
+    assert onto(adopter, "validate").returncode == 0
+
+    waiting = onto(adopter, "cq", "CQ-08")
+    assert re.search(rf"^{incident}\s+in_progress\s+{requirement}\s+in_progress$", waiting.stdout, re.M)
+    assert f"{incident} [in_progress] An item was shown with no owner: waiting on {requirement}" in (
+        onto(adopter, "view").stdout
+    )
+
+    # Closed by saying so: the gate refuses.
+    set_status(adopter, incident, "done")
+    early = onto(adopter, "trace")
+    assert early.returncode == 1
+    assert "gate:ClosedIncidentIsFixed" in early.stdout and requirement in early.stdout
+    set_status(adopter, incident, "in_progress")
+
+    owner_test(adopter)
+    new(adopter, "Task", "title=Record the owner", f"implements={requirement}", "status=done")
+    new(adopter, "Test", "title=An item has its owner", f"verifies={requirement}", OWNER_TEST,
+        "status=done")  # fmt: skip
+    collect(adopter)
+    set_status(adopter, requirement, "done")
+    set_status(adopter, incident, "done")
+
+    closed = onto(adopter, "trace")
+    assert closed.returncode == 0, closed.stdout
+    assert "(no rows)" in onto(adopter, "cq", "CQ-08").stdout
+    assert f"{incident} [" not in onto(adopter, "view").stdout  # no longer among the open ones
+
+
+def test_a_rule_changes_by_a_requirement_that_replaces_the_old_one(adopter):
+    """The Rule change playbook, as the scaffolded gates take it."""
+    owner_test(adopter)
+    old = new(
+        adopter, "Requirement", "title=Every item has an owner",
+        "ears_text=The system shall record one `Owner` for each `Item`.",
+        "uses_terms=Owner,Item", "status=done",
+    )  # fmt: skip
+    old_task = new(adopter, "Task", "title=Record the owner", f"implements={old}", "status=done")
+    test = new(adopter, "Test", "title=An item has its owner", f"verifies={old}", OWNER_TEST,
+               "status=done")  # fmt: skip
+    old_decision = new(adopter, "Decision", "title=One owner", "rationale=Simplest.",
+                       "uses_terms=Owner", "status=done")  # fmt: skip
+    collect(adopter)
+    assert onto(adopter, "trace").returncode == 0
+
+    replacement = new(
+        adopter, "Requirement", "title=Every item has an owner or a label",
+        "ears_text=The system shall record one `Owner` or one `Label` for each `Item`.",
+        "uses_terms=Owner,Label,Item", "status=done", f"replaces={old}",
+    )  # fmt: skip
+    new(adopter, "Task", "title=Allow a label", f"implements={replacement}", "status=done")
+    (adopter / "src/loans/domain").mkdir(parents=True, exist_ok=True)
+    (adopter / "src/loans/domain/owner.py").write_text("owner = None\n", encoding="utf-8")
+    decision = new(
+        adopter, "Decision", "title=An owner or a label", "rationale=Shared items have no owner.",
+        "uses_terms=Owner", "status=done", f"supersedes={old_decision}",
+        "affects=src/loans/domain/*.py",
+    )  # fmt: skip
+    path = adopter / f"work/{test}.md"
+    path.write_text(
+        path.read_text("utf-8").replace(f"verifies: [{old}]", f"verifies: [{replacement}]"), "utf-8"
+    )
+
+    unmarked = onto(adopter, "trace")
+    assert unmarked.returncode == 1
+    assert "gate:ReplacedRequirementIsMarked" in unmarked.stdout
+    assert "gate:SupersededDecisionIsMarked" in unmarked.stdout
+
+    set_status(adopter, old, "superseded")
+    set_status(adopter, old_decision, "superseded")
+    set_status(adopter, old_task, "superseded")
+    collect(adopter)
+    for gate in (["validate"], ["trace"], ["rules"]):
+        held = onto(adopter, *gate)
+        assert held.returncode == 0, f"onto {' '.join(gate)}\n{held.stdout}{held.stderr}"
+
+    forward = onto(adopter, "cq", "CQ-09", "--bind", f"requirement={old}")
+    assert re.search(rf"^{old}\s+{replacement}\s+done\s", forward.stdout, re.M)
+    on_path = onto(adopter, "cq", "CQ-10", "--bind", "path=src/loans/domain/owner.py")
+    assert decision in on_path.stdout and old_decision not in on_path.stdout
+    sliced = onto(adopter, "slice", "--term", "Item", "--file", "src/loans/domain/owner.py")
+    assert f"{decision} An owner or a label" in sliced.stdout
+    assert old not in sliced.stdout.split("already established")[1]
+
+    # The file the Decision constrains is moved away: the constraint is reported as stale.
+    (adopter / "src/loans/domain/owner.py").unlink()
+    stale = onto(adopter, "validate")
+    assert stale.returncode == 0
+    assert "warning[stale-affects]" in stale.stdout and "src/loans/domain/*.py" in stale.stdout
+
+
 def test_the_scaffolded_guard_hook_blocks_the_files_nobody_edits_by_hand(adopter):
     settings = json.loads((adopter / ".claude/settings.json").read_text(encoding="utf-8"))
     (command,) = [

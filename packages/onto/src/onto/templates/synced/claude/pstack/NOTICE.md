@@ -21,9 +21,9 @@ No script, hook or agent definition was taken.
 
 | Adapted skill | From | Changes |
 | --- | --- | --- |
-| `ostack-mode` | `poteto-mode/SKILL.md` | Renamed. Non-negotiables cut to the skills vendored here, with three added for the ontology gates. Principles index cut to the four vendored. Autonomy narrowed: anything that leaves the repository pauses. Subagents are this repository's four, on Claude models only. Model-sheet, multi-runtime and project-playbook machinery removed. A table of the gates added. |
-| `ostack-mode/playbooks/feature.md` | `poteto-mode/playbooks/feature.md` | Four steps added (intake, vocabulary gap, evidence, trace). Every step tagged with its stage. Delegation goes to the `implementer` subagent, and the worktree and arena instructions are removed. The PR step is written out. The design step says a changed rule supersedes its Decision, and the evidence step asks for a bounded or property test of a rule over a value space. |
-| `ostack-mode/playbooks/bug-fix.md` | `poteto-mode/playbooks/bug-fix.md` | Three steps added (the Requirement the bug breaks, the repro as a Test item, the trace). Focused-fix exception shortened. Publication paragraph removed. |
+| `ostack-mode` | `poteto-mode/SKILL.md` | Renamed. Non-negotiables cut to the skills vendored here, with three added for the ontology gates. Principles index cut to the four vendored. Autonomy narrowed: anything that leaves the repository pauses. Subagents are this repository's four, on Claude models only. Model-sheet, multi-runtime and project-playbook machinery removed. A table of the gates added. The playbook list names three playbooks written here (Incident, Rule change, Ontology change) and says when each applies. |
+| `ostack-mode/playbooks/feature.md` | `poteto-mode/playbooks/feature.md` | Four steps added (intake, vocabulary gap, evidence, trace). Every step tagged with its stage. Delegation goes to the `implementer` subagent, and the worktree and arena instructions are removed. The PR step is written out. The design step says a changed rule supersedes its Decision and sends a change to a `done` Requirement to the Rule change playbook, and the evidence step asks for a bounded or property test of a rule over a value space. |
+| `ostack-mode/playbooks/bug-fix.md` | `poteto-mode/playbooks/bug-fix.md` | Three steps added (the Requirement the bug breaks, the repro as a Test item, the trace). Focused-fix exception shortened. Publication paragraph removed. A sentence added that sends a bug observed in operation to the Incident playbook first. |
 | `ostack-mode/playbooks/investigation.md` | `poteto-mode/playbooks/investigation.md` | A first step added: ask the graph. |
 | `how` | `how/SKILL.md` | Other runtimes' mappings removed. The brief names the layers `onto.toml` declares. |
 | `why` | `why/SKILL.md` | Reads the recorded Decisions before the history. |
@@ -32,8 +32,11 @@ No script, hook or agent definition was taken.
 | `show-me-your-work` | `show-me-your-work/SKILL.md` | The log is written by `{{onto_cmd}} log`, committed, and turned into PROV-O. Transcript audit and cross-model review shortened. |
 | `principle-*` (four) | the same four | Text kept. An "In this repository" section added to each. |
 
-`ostack-mode/playbooks/ontology-change.md`, `term-gap`, `ontology-change`,
-`encode-correction` and the four agents under `.claude/agents/` were written for this repository.
+`ostack-mode/playbooks/ontology-change.md`, `ostack-mode/playbooks/incident.md`,
+`ostack-mode/playbooks/rule-change.md`, `term-gap`, `ontology-change`, `encode-correction`
+and the four agents under `.claude/agents/` were written for this repository. The Incident
+playbook has the reader copy steps 3 to 8 of the adapted Bug fix playbook, and repeats one
+sentence of its reproduction step.
 
 To see every change line by line: `python tools/check_vendored.py --diff`.
 
