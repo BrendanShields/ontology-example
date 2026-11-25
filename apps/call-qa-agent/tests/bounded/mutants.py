@@ -23,8 +23,8 @@ RUNNER = """
 import sys
 import call_qa_agent
 print("PACKAGE", call_qa_agent.__file__)
-from tests.bounded import explore
-sys.exit(explore.main(sys.argv[1:]))
+from tests.bounded import explore, statechart
+sys.exit({"explore": explore, "statechart": statechart}[sys.argv[1]].main(sys.argv[2:]))
 """
 
 
@@ -113,11 +113,11 @@ class Explored:
     output: str
 
 
-def explore_copy(root: Path, *checks: str) -> Explored:
-    """Run the explorers in a fresh interpreter against the package copied under `root`."""
+def explore_copy(root: Path, *arguments: str, module: str = "explore") -> Explored:
+    """Run `module` in a fresh interpreter against the package copied under `root`."""
     env = {**os.environ, "PYTHONPATH": str(root), "PYTHONDONTWRITEBYTECODE": "1"}
     done = subprocess.run(
-        [sys.executable, "-c", RUNNER, *checks],
+        [sys.executable, "-c", RUNNER, module, *arguments],
         cwd=APP,
         env=env,
         capture_output=True,
