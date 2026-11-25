@@ -1,0 +1,13 @@
+{
+  "name": "ontologies-agentic-engineering",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "present": "npx --yes hyperframes@0.9.94 present",
+    "dev": "npx --yes hyperframes@0.9.94 preview",
+    "check": "npx --yes hyperframes@0.9.94 check",
+    "render": "npx --yes hyperframes@0.9.94 render",
+    "publish": "npx --yes hyperframes@0.9.94 publish"
+  }
+}
