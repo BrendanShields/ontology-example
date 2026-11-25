@@ -60,10 +60,39 @@ forbidden_modules = [
     "call_qa_agent.agent",
     "call_qa_agent.tools",
     "call_qa_agent.session",
+    "call_qa_agent.ledger",
     "call_qa_agent.cli",
     "call_qa_agent.replay",
     "call_qa_agent.prompts",
     "anthropic",
+]
+
+# The domain layer decides and keeps nothing: it is handed what it needs, the time
+# included, and whoever calls it does the reading and the writing. `datetime` is not
+# listed because the domain layer needs the type: nothing here stops datetime.now().
+[[tool.importlinter.contracts]]
+name = "call-qa: the domain layer reads and writes nothing"
+type = "forbidden"
+source_modules = ["call_qa_agent.domain"]
+# What the generated types import to be types is not the domain layer's doing.
+allow_indirect_imports = true
+forbidden_modules = [
+    "pathlib",
+    "os",
+    "io",
+    "sys",
+    "json",
+    "yaml",
+    "logging",
+    "time",
+    "shutil",
+    "tempfile",
+    "subprocess",
+    "socket",
+    "sqlite3",
+    "urllib",
+    "http",
+    "httpx2",
 ]
 
 [[tool.importlinter.contracts]]
@@ -75,6 +104,7 @@ forbidden_modules = [
     "call_qa_agent.agent",
     "call_qa_agent.tools",
     "call_qa_agent.session",
+    "call_qa_agent.ledger",
     "call_qa_agent.cli",
     "call_qa_agent.replay",
     "call_qa_agent.prompts",
@@ -90,7 +120,23 @@ layers = [
     "call_qa_agent.agent",
     "call_qa_agent.prompts",
     "call_qa_agent.tools",
-    "call_qa_agent.session",
+    # Two adapters over the domain layer that know nothing of each other: the write path
+    # of Findings, and the ledger of Reviews and AuditRecords.
+    "call_qa_agent.session | call_qa_agent.ledger",
     "call_qa_agent.domain",
     "call_qa_agent.generated",
+]
+
+[[tool.importlinter.contracts]]
+name = "call-qa: the ledger reaches only the domain layer and the generated types"
+type = "forbidden"
+source_modules = ["call_qa_agent.ledger"]
+forbidden_modules = [
+    "call_qa_agent.agent",
+    "call_qa_agent.tools",
+    "call_qa_agent.session",
+    "call_qa_agent.cli",
+    "call_qa_agent.replay",
+    "call_qa_agent.prompts",
+    "anthropic",
 ]

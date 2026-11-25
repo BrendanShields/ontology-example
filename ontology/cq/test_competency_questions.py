@@ -70,7 +70,10 @@ def test_cq03_leaves_out_superseded_decisions(graph, questions):
         "DEC-0005",
         "DEC-0006",
     ]
-    assert column(ask(graph, questions, "CQ-03", term="Scorecard"), "decision") == ["DEC-0002"]
+    assert column(ask(graph, questions, "CQ-03", term="Scorecard"), "decision") == [
+        "DEC-0002",
+        "DEC-0012",
+    ]
 
 
 def test_cq03_agrees_with_the_slicer(graph, questions):
@@ -96,7 +99,16 @@ def test_cq04_walks_the_whole_chain(graph, questions):
 
 def test_cq05_returns_the_complete_set(graph, questions):
     rows = ask(graph, questions, "CQ-05")
-    assert sorted({row["requirement"] for row in rows}) == ["REQ-0002", "REQ-0008", "REQ-0009"]
+    # REQ-0009 is superseded and still in the answer: the question is about what was written.
+    assert sorted({row["requirement"] for row in rows}) == [
+        "REQ-0002",
+        "REQ-0008",
+        "REQ-0009",
+        "REQ-0017",
+        "REQ-0021",
+        "REQ-0022",
+        "REQ-0023",
+    ]
     assert {row["risk"] for row in rows} == {"high"}
 
 

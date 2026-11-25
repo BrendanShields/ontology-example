@@ -28,7 +28,9 @@
     },
     "RejectionRule.REVIEW_REQUIRED": {
       "binding": "rule",
-      "functions": []
+      "functions": [
+        "apps/call-qa-agent/src/call_qa_agent/domain/publication.py::publish"
+      ]
     },
     "RejectionRule.UNKNOWN_CRITERION": {
       "binding": "rule",

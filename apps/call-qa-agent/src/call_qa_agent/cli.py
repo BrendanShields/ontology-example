@@ -1,11 +1,22 @@
-"""`call-qa`: evaluate a Call from the command line.
+"""`call-qa`: evaluate a Call from the command line, and publish the Evaluation.
 
     call-qa evaluate CALL.yaml --scorecard SCORECARD.yaml              # asks Claude
     call-qa evaluate CALL.yaml --scorecard SCORECARD.yaml --replay STEPS.json   # offline
     call-qa tools --scorecard SCORECARD.yaml                           # what the model is given
 
-Exit codes: 0 an Evaluation was produced, 1 none was (the Rejections are
-printed), 2 the request could not be made.
+    call-qa evaluate ... --stage LEDGER                                # and stage the Evaluation
+    call-qa review LEDGER CALL_ID SCORECARD_ID --reviewer WHO --outcome CONFIRMED
+    call-qa publish LEDGER CALL_ID SCORECARD_ID
+    call-qa show LEDGER CALL_ID SCORECARD_ID                           # state and audit trail
+
+`evaluate` writes nothing anywhere unless it is given `--stage`. The ledger is
+one file of JSON lines. Publishing means recording the state PUBLISHED on it:
+there is no system behind this example that an Evaluation is sent to.
+
+Exit codes: 0 done, or it had been done already. 1 refused: no Evaluation was
+produced, or a rule or the state of the Evaluation does not permit what was
+asked, and the reason is printed. 2 failed: a file or the ledger could not be
+read or written, or the request to the model could not be made.
 
 Whatever this writes besides the result on stdout names things and counts
 them and quotes nothing from a Call or a rationale (REQ-0008, DEC-0009).
@@ -26,7 +37,19 @@ import yaml
 from pydantic import BaseModel, ValidationError
 
 from .agent import EvaluationIncomplete, Settings, Trace, evaluate, make_client, with_overrides
-from .generated import Call, Criterion, FindingOutcome, Scorecard, Utterance
+from .domain.publication import Refused
+from .generated import (
+    Call,
+    Criterion,
+    Disposition,
+    Evaluation,
+    FindingOutcome,
+    PublicationState,
+    ReviewOutcome,
+    Scorecard,
+    Utterance,
+)
+from .ledger import Corrupt, Entry, Ledger
 from .prompts import system_prompt
 from .replay import load_steps, replay
 from .tools import FINISH_EVALUATION, RECORD_FINDING, render_rejections, tool_definitions
@@ -77,11 +100,17 @@ def load_scorecard(path: Path) -> Scorecard:
     repeated = sorted({name for name in names if names.count(name) > 1})
     if repeated:
         # REQ-0011: one Finding per Criterion means nothing unless a criterion_id names one.
-        raise ValueError(
+        raise Unreadable(
             f"Scorecard {scorecard.scorecard_id} has more than one Criterion with the "
             f"criterion_id {', '.join(repeated)}"
         )
     return scorecard
+
+
+def _identifier(value: str) -> str:
+    if not value.strip() or any(character.isspace() for character in value):
+        raise argparse.ArgumentTypeError("an identifier has no spaces and is not empty")
+    return value
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -105,6 +134,12 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="fail instead of retrying on another model when the request is declined",
     )
+    run.add_argument(
+        "--stage",
+        type=Path,
+        metavar="LEDGER",
+        help="stage the Evaluation on this ledger file. Without it nothing is written anywhere",
+    )
 
     for name, text in (
         ("tools", "print the tool definitions"),
@@ -113,13 +148,39 @@ def main(argv: list[str] | None = None) -> int:
         show = sub.add_parser(name, help=f"{text} the model gets for a Scorecard")
         show.add_argument("--scorecard", type=Path, required=True)
 
+    for name, text in (
+        ("review", "record a person's Review of a STAGED Evaluation that needs one"),
+        (
+            "publish",
+            "record that an Evaluation is PUBLISHED. Nothing is sent anywhere: this example "
+            "has no system behind it, so the record on the ledger is the publication",
+        ),
+        ("show", "print where an Evaluation stands, its Reviews and its audit trail"),
+    ):
+        command = sub.add_parser(name, help=text, description=text[0].upper() + text[1:] + ".")
+        command.add_argument("ledger", type=Path, metavar="LEDGER", help="the ledger file")
+        command.add_argument("call", type=_identifier, metavar="CALL_ID")
+        command.add_argument("scorecard", type=_identifier, metavar="SCORECARD_ID")
+        if name == "review":
+            command.add_argument(
+                "--reviewer",
+                type=_identifier,
+                required=True,
+                help="the identifier of the person. It is recorded as given and not checked",
+            )
+            command.add_argument(
+                "--outcome", required=True, choices=[outcome.value for outcome in ReviewOutcome]
+            )
+        if name == "show":
+            command.add_argument("--json", action="store_true", help="print it as JSON")
+
     args = parser.parse_args(argv)
     # At DEBUG the SDK logs each request whole, which is the whole Call (DEC-0009).
     held = logging.root.manager.disable
     logging.disable(logging.INFO)
     try:
         return _run(args)
-    except Unreadable as error:
+    except (Unreadable, Corrupt) as error:
         print(f"call-qa: {error}", file=sys.stderr)
         return 2
     except Exception as error:
@@ -136,6 +197,8 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _run(args) -> int:
+    if args.command in ("review", "publish", "show"):
+        return _on_ledger(args)
     scorecard = load_scorecard(args.scorecard)
     if args.command == "tools":
         print(json.dumps(tool_definitions(scorecard), indent=2))
@@ -186,12 +249,92 @@ def _evaluate(args, scorecard: Scorecard) -> int:
         return 2
 
     _show_trace(args, trace, scorecard)
-    data = evaluation.model_dump(mode="json", exclude_none=True)
-    if args.json:
+    _print(evaluation.model_dump(mode="json", exclude_none=True), args.json)
+    return _stage(args.stage, evaluation) if args.stage else 0
+
+
+def _print(data: dict, as_json: bool) -> None:
+    if as_json:
         print(json.dumps(data, indent=2))
     else:
         print(yaml.safe_dump(data, sort_keys=False, allow_unicode=True, width=100), end="")
+
+
+def _stage(path: Path, evaluation: Evaluation) -> int:
+    ledger = Ledger(path)
+    try:
+        recorded = _written(path, lambda: ledger.stage(evaluation))
+    except Refused as refused:
+        print(f"Not staged: {refused.reason}, and it is not this one.", file=sys.stderr)
+        return 1
+    found = ledger.entry(evaluation.call, evaluation.scorecard)
+    print(_standing(evaluation.call, evaluation.scorecard, found, recorded), file=sys.stderr)
     return 0
+
+
+def _on_ledger(args) -> int:
+    ledger = Ledger(args.ledger)
+    recorded = True
+    try:
+        if args.command == "review":
+            outcome = ReviewOutcome(args.outcome)
+            recorded = _written(
+                args.ledger,
+                lambda: ledger.review(args.call, args.scorecard, args.reviewer, outcome),
+            )
+        elif args.command == "publish":
+            recorded = _written(args.ledger, lambda: ledger.publish(args.call, args.scorecard))
+    except Refused as refused:
+        print(f"Refused: {refused.reason}.", file=sys.stderr)
+        if refused.rejections:
+            print(render_rejections(refused.rejections), file=sys.stderr)
+        return 1
+
+    found = ledger.entry(args.call, args.scorecard)
+    if found is None:
+        print(f"No Evaluation of {args.call} against {args.scorecard} is staged.", file=sys.stderr)
+        return 1
+    if args.command != "show":
+        print(_standing(args.call, args.scorecard, found, recorded), file=sys.stderr)
+        return 0
+    _print(
+        {
+            "call": args.call,
+            "scorecard": args.scorecard,
+            "disposition": found.disposition.value,
+            "publication_state": found.publication_state.value,
+            "sha256": found.sha256,
+            "reviews": [made.model_dump(mode="json") for made in found.reviews],
+            "audit_records": [record.model_dump(mode="json") for record in found.records],
+        },
+        args.json,
+    )
+    return 0
+
+
+def _written(path: Path, command):
+    try:
+        return command()
+    except OSError as error:
+        raise Unreadable(f"{path}: {error.strerror or type(error).__name__}") from None
+
+
+def _standing(call: str, scorecard: str, found: Entry, recorded: bool) -> str:
+    """One line on where an Evaluation stands, in identifiers and states."""
+    line = (
+        f"{call} against {scorecard}: {found.publication_state.value}, "
+        f"disposition {found.disposition.value}, {len(found.reviews)} Review(s), "
+        f"{len(found.records)} AuditRecord(s)."
+    )
+    if not recorded:
+        line += " Nothing was recorded: this had been done already."
+    elif (
+        found.publication_state is PublicationState.STAGED
+        and found.disposition is not Disposition.FINAL
+        and not any(made.review_outcome == ReviewOutcome.CONFIRMED.value for made in found.reviews)
+    ):
+        line += " It needs a Review with the outcome CONFIRMED before it can be published."
+    return line
 
 
 def _steps(path: Path) -> list[dict]:

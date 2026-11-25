@@ -1,8 +1,9 @@
 """Acceptance test for REQ-0008: the text of an Utterance stays out of the logs.
 
 What counts as a log is settled in DEC-0009: everything `call-qa` writes other
-than its result on stdout. Here that is stderr and every record that reaches a
-logger while the command runs, the SDK's loggers included.
+than its result on stdout. Here that is stderr, every record that reaches a
+logger while the command runs, the SDK's loggers included, and the ledger
+file, which is the one file the app writes.
 
 Each path below is run on a synthetic Call whose every Utterance carries one
 planted phrase and on Findings whose every rationale carries another. A
@@ -139,8 +140,11 @@ def answering(status: int, body: dict) -> anthropic.Anthropic:
     )
 
 
-def run(argv: list[str], capsys, logged: Logged) -> tuple[int, list[str]]:
-    """Run `call-qa`. Returns its exit code and where a planted phrase was logged."""
+def run(argv: list[str], capsys, logged: Logged, stdout: bool = False) -> tuple[int, list[str]]:
+    """Run `call-qa`. Returns its exit code and where a planted phrase was logged.
+
+    stdout is looked at too when the command's result is not an Evaluation.
+    """
     try:
         code = cli.main(argv)
     except SystemExit as stopped:  # argparse
@@ -149,8 +153,10 @@ def run(argv: list[str], capsys, logged: Logged) -> tuple[int, list[str]]:
         # What the interpreter would print on stderr for an error nobody caught.
         code = None
         logged.written.append((f"uncaught {type(error).__name__}", str(error)))
-    stderr = capsys.readouterr().err
-    reached = {"stderr"} if any(phrase in stderr for phrase in PLANTED) else set()
+    captured = capsys.readouterr()
+    reached = {"stderr"} if any(phrase in captured.err for phrase in PLANTED) else set()
+    if stdout and any(phrase in captured.out for phrase in PLANTED):
+        reached.add("stdout")
     reached |= {name for name, text in logged.written if any(phrase in text for phrase in PLANTED)}
     return code, sorted(reached)
 
@@ -227,3 +233,22 @@ def test_input_that_cannot_be_read_logs_no_planted_phrase(files, capsys, logged,
     code, reached = run(evaluate(files, call, *more), capsys, logged)
 
     assert (code, reached) == (2, [])
+
+
+def test_the_ledger_and_its_commands_hold_no_planted_phrase(files, tmp_path, capsys, logged):
+    ledger = tmp_path / "ledger.jsonl"
+    on_ledger = [str(ledger), CALL["call_id"], SCORECARD["scorecard_id"]]
+    staging = evaluate(files, "call", "--replay", str(files["steps"]), "--stage", str(ledger))
+
+    assert run(staging, capsys, logged) == (0, [])
+    for argv, code in (
+        (["publish", *on_ledger], 1),  # the critical Criterion failed: REVIEW_REQUIRED
+        (["review", *on_ledger, "--reviewer", "QA-0007", "--outcome", "CONFIRMED"], 0),
+        (["publish", *on_ledger], 0),
+        (["show", *on_ledger], 0),
+    ):
+        assert run(argv, capsys, logged, stdout=True) == (code, []), argv[0]
+
+    written = ledger.read_text(encoding="utf-8")
+    assert len(written.splitlines()) == 3
+    assert not any(phrase in written for phrase in PLANTED)
