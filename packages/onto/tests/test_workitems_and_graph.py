@@ -236,6 +236,43 @@ def test_short_names_and_bindings():
     assert rows == [{"task": "TASK-0003", "req": "REQ-0007"}]
 
 
+WF = "PREFIX wf: <https://bank.example/ontology/workflow/> "
+# A reserved address nothing answers on: a check that stopped refusing would fail, not call out.
+ELSEWHERE = "<http://192.0.2.1:9/sparql>"
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        f"SELECT ?s WHERE {{ SERVICE {ELSEWHERE} {{ ?s ?p ?o }} }}",
+        f"SELECT ?s WHERE {{ service silent {ELSEWHERE} {{ ?s ?p ?o }} }}",
+        f"SELECT ?s WHERE {{ ?s ?p ?o\nSERVICE{ELSEWHERE} {{ ?s ?p ?o }} }}",
+        f"SELECT ?s WHERE {{ ?s ?p 'no # comment' . SERVICE {ELSEWHERE} {{ ?s ?p ?o }} }}",
+    ],
+)
+def test_a_query_that_would_call_another_host_is_refused(query):
+    with pytest.raises(ValueError, match="may not contain SERVICE"):
+        load_graph().select(query)
+
+
+def test_the_word_service_outside_the_query_s_code_is_not_a_service_clause():
+    rows = load_graph().select(
+        "# which service does this task serve?\n"
+        "PREFIX service: <https://bank.example/ontology/workflow/>\n"
+        "SELECT ?task ?service ?label WHERE { ?task service:implements ?service . "
+        "BIND('SERVICE <x>' AS ?label) } ORDER BY ?service",
+        task="TASK-0003",
+    )
+    assert rows == [{"task": "TASK-0003", "service": "REQ-0007", "label": "SERVICE <x>"}]
+
+
+@pytest.mark.parametrize("form", ["CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }", "DESCRIBE ?s"])
+def test_a_query_that_returns_triples_is_refused_with_a_reason(form):
+    with pytest.raises(ValueError, match="only SELECT and ASK"):
+        load_graph().select(WF + form)
+    assert load_graph().select(WF + "ASK { ?t wf:implements ?r }") == [{"ask": "true"}]
+
+
 # --- slices ------------------------------------------------------------------------
 
 

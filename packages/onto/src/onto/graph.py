@@ -12,6 +12,7 @@ rdflib builds the graph and feeds pySHACL; Oxigraph answers the SPARQL.
 from __future__ import annotations
 
 import io
+import re
 from functools import cached_property
 from pathlib import Path
 from urllib.parse import quote
@@ -23,6 +24,14 @@ from .workspace import Workspace
 
 PROV = "http://www.w3.org/ns/prov#"
 SKOS = "http://www.w3.org/2004/02/skos/core#"
+
+# The parts of a query that are not code: IRIs, strings and comments, matched in
+# the order a SPARQL lexer meets them, so a '#' inside an IRI starts no comment.
+_NOT_CODE = re.compile(
+    r"""<[^<>\s]*>|'''.*?'''|\"\"\".*?\"\"\"|"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|\#[^\n]*""",
+    re.S,
+)
+_SERVICE = re.compile(r"(?<![\w:?$-])SERVICE(?![\w:-])", re.I)
 
 
 class WorkGraph:
@@ -87,6 +96,7 @@ class WorkGraph:
         """
         import pyoxigraph
 
+        _refuse_federation(sparql)
         substitutions = {
             pyoxigraph.Variable(name): pyoxigraph.NamedNode(str(self.node(value)))
             for name, value in bindings.items()
@@ -94,6 +104,11 @@ class WorkGraph:
         results = self._store.query(sparql, substitutions=substitutions or None)
         if isinstance(results, pyoxigraph.QueryBoolean):
             return [{"ask": str(bool(results)).lower()}]
+        if isinstance(results, pyoxigraph.QueryTriples):
+            raise ValueError(
+                "only SELECT and ASK queries can be run: a CONSTRUCT or DESCRIBE query "
+                "returns triples, not rows. Rewrite it as a SELECT."
+            )
         variables = [variable.value for variable in results.variables]
         rows = []
         for solution in results:
@@ -107,6 +122,15 @@ class WorkGraph:
 
     def serialize(self, fmt: str = "turtle") -> str:
         return self.rdf.serialize(format=fmt)
+
+
+def _refuse_federation(sparql: str) -> None:
+    """A SERVICE clause would send part of the query, and of the graph, to another host."""
+    if _SERVICE.search(_NOT_CODE.sub(" ", sparql)):
+        raise ValueError(
+            "a query may not contain SERVICE: it would make a request to another host. "
+            "Queries run against the traceability graph of this repository only."
+        )
 
 
 def build_graph(ws: Workspace) -> WorkGraph:
