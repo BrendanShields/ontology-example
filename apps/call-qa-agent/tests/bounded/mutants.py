@@ -47,6 +47,8 @@ _OUT_OF_TURNS = '    raise EvaluationIncomplete(\n        f"the model did not'
 
 _EVALUATION_RETURNED = _ANSWERED + "        if session.evaluation is not None:\n            return session.evaluation"
 _CONCLUDED = "self.evaluation = scoring.conclude(self.call, self.scorecard, self.findings)"
+_UNCITED = "[f.model_copy(update={'cited_utterances': None}) for f in findings],"
+_RECORDED_UNCITED = "self.findings.append(finding.model_copy(update={'cited_utterances': []}))"
 
 MUTANTS = [
     Mutant("evaluation-loses-its-score", _SCORING, "score=points,", "score=0,", "scoring", "S1"),
@@ -56,6 +58,7 @@ MUTANTS = [
     Mutant("no-review-when-nothing-applied", _SCORING, _NEEDS_REVIEW, "needs_review = critical_failed", "scoring", "S4"),
     Mutant("not-applicable-counts-against", _SCORING, _APPLIES, "if True", "scoring", "S4"),
     Mutant("findings-reordered", _SCORING, "findings=findings,", "findings=findings[::-1],", "scoring", "S5"),
+    Mutant("evaluation-loses-its-citations", _SCORING, "findings=findings,", "findings=" + _UNCITED, "scoring", "S5"),
     Mutant("only-not-met-applies", _SCORING, _APPLIES, "if f.finding_outcome == FindingOutcome.NOT_MET", "scoring", "S6"),
     Mutant("score-rounds-up", _SCORING, "met * 100 // applied if applied else 0", "-(-met * 100 // applied) if applied else 0", "scoring", "S6"),
     Mutant("score-ignores-weight", _SCORING, "criterion.criterion_id: criterion.weight for", "criterion.criterion_id: 1 for", "scoring", "S6"),
@@ -63,15 +66,18 @@ MUTANTS = [
     Mutant("duplicate-findings-concluded", _SCORING, "    judged = sorted(finding.criterion for finding in findings)", "    judged = sorted({finding.criterion for finding in findings})", "scoring", "S7"),
     Mutant("rejected-finding-recorded", "session.py", "        if not rejections:\n            self.findings.append(finding)", "        self.findings.append(finding)", "session", "G1"),
     Mutant("finding-recorded-first", "session.py", "self.findings.append(finding)", "self.findings.insert(0, finding)", "session", "G2"),
+    Mutant("finding-recorded-without-citations", "session.py", "self.findings.append(finding)", _RECORDED_UNCITED, "session", "G2"),
     Mutant("duplicate-finding-recorded", _GUARDRAILS, "elif any(existing.criterion == finding.criterion for existing in recorded):", "elif False:", "session", "G3"),
     Mutant("uncited-judgement-recorded", _GUARDRAILS, "if finding.finding_outcome in JUDGED and not cited:", "if False:", "session", "G3"),
     Mutant("unknown-utterance-recorded", _GUARDRAILS, "    if unknown:", "    if False:", "session", "G3"),
     Mutant("unknown-criterion-recorded", _GUARDRAILS, "if finding.criterion not in criteria:", "if False:", "session", "G3"),
     Mutant("wrong-rule-named", _GUARDRAILS, "rejection_rule=RejectionRule.UNKNOWN_UTTERANCE", "rejection_rule=RejectionRule.MISSING_CITATION", "session", "G3"),
+    Mutant("rejection-names-another-criterion", _GUARDRAILS, "rejection_rule=RejectionRule.DUPLICATE_FINDING,\n                criterion=finding.criterion,", "rejection_rule=RejectionRule.DUPLICATE_FINDING,\n                criterion='zz',", "session", "G3"),
     Mutant("finish-ignores-missing", _GUARDRAILS, "if criterion.criterion_id not in judged", "if False", "session", "G4"),
     Mutant("evaluation-without-all-findings", "session.py", "if not rejections and self.evaluation is None:", "if self.evaluation is None:", "session", "G4"),
     Mutant("missing-finding-misnamed", _GUARDRAILS, "rejection_rule=RejectionRule.MISSING_FINDING", "rejection_rule=RejectionRule.MISSING_CITATION", "session", "G5"),
     Mutant("evaluation-loses-a-finding", "session.py", _CONCLUDED, _CONCLUDED + "\n            self.evaluation = self.evaluation.model_copy(update={'findings': self.findings[1:]})", "session", "G6"),
+    Mutant("concluded-evaluation-loses-citations", _SCORING, "findings=findings,", "findings=" + _UNCITED, "session", "G6"),
     Mutant("record-after-completion", "session.py", "        if self.evaluation is not None:\n            raise RuntimeError", "        if False:\n            raise RuntimeError", "session", "G7"),
     Mutant("one-turn-too-many", "agent.py", "for _ in range(settings.max_turns):", "for _ in range(settings.max_turns + 1):", "loop", "L1"),
     Mutant("keeps-asking-after-evaluation", "agent.py", _ANSWERED + "        if session.evaluation is not None:", _ANSWERED + "        if False:", "loop", "L2"),
@@ -81,6 +87,7 @@ MUTANTS = [
     Mutant("stop-without-tool-never-finishes", "agent.py", "            missing = session.finish()\n", "            missing = session.outstanding()\n", "loop", "L2"),
     Mutant("turn-limit-returns-partial", "agent.py", _OUT_OF_TURNS, "    from .domain import scoring as _s\n    return _s.conclude(call, scorecard, session.findings)\n" + _OUT_OF_TURNS, "loop", "L2"),
     Mutant("returned-evaluation-loses-a-finding", "agent.py", _EVALUATION_RETURNED, _EVALUATION_RETURNED + ".model_copy(update={'findings': session.findings[1:]})", "loop", "L3"),
+    Mutant("returned-evaluation-loses-citations", "session.py", "self.findings.append(finding)", _RECORDED_UNCITED, "loop", "L3"),
     Mutant("outstanding-rejections-dropped", "agent.py", "        session.outstanding(),\n    )", "        [],\n    )", "loop", "L4"),
     Mutant("tool-result-dropped", "agent.py", "            results.append(\n", "            results.clear()\n            results.append(\n", "loop", "L5"),
     Mutant("returned-evaluation-rescored", "agent.py", _EVALUATION_RETURNED, _EVALUATION_RETURNED + ".model_copy(update={'score': 0})", "loop", "L6"),

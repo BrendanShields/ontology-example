@@ -39,6 +39,7 @@ from call_qa_agent.generated import (
     FindingOutcome,
     RejectionRule,
     Scorecard,
+    Speaker,
 )
 from call_qa_agent.session import EvaluationSession
 from call_qa_agent.tools import FINISH_EVALUATION, RECORD_FINDING
@@ -54,8 +55,8 @@ CALL = Call.model_validate(
         "call_id": "CALL-9000",
         "representative": "REP-9000",
         "utterances": [
-            {"sequence": 1, "speaker": "CUSTOMER", "text": "x"},
-            {"sequence": 2, "speaker": "REPRESENTATIVE", "text": "y"},
+            {"sequence": 1, "speaker": Speaker.CUSTOMER.value, "text": "x"},
+            {"sequence": 2, "speaker": Speaker.REPRESENTATIVE.value, "text": "y"},
         ],
     }
 )
@@ -67,21 +68,21 @@ PROPERTIES = {
     "S2": "a NOT_MET Finding for a critical Criterion gives FAIL and NEEDS_REVIEW",
     "S3": "PASS exactly when no critical Criterion is NOT_MET and the score is at least the pass mark",
     "S4": "FINAL exactly when no critical Criterion is NOT_MET and at least one Criterion applied",
-    "S5": "the Evaluation carries exactly the Findings it was given, in order",
+    "S5": "the Evaluation carries exactly the Findings it was given, whole and in order",
     "S6": "the score is the met share of the weight that applied, rounded down, and 0 when nothing applied",
     "S7": "there is an Evaluation exactly when the Findings given are one for each Criterion",
     # session: REQ-0001, REQ-0002, REQ-0003
     "G1": "a rejected proposal is not recorded and changes nothing",
-    "G2": "an accepted proposal is recorded once, after the Findings already recorded",
-    "G3": "the Rejections name exactly the rules the proposal breaks",
+    "G2": "an accepted proposal is recorded once and whole, after the Findings already recorded",
+    "G3": "the Rejections name exactly the rules the proposal breaks, for the Criterion proposed",
     "G4": "finish completes the Evaluation exactly when every Criterion has a Finding",
     "G5": "finish otherwise answers one MISSING_FINDING for each Criterion with no Finding",
-    "G6": "a complete Evaluation holds the recorded Findings, exactly one per Criterion",
+    "G6": "a complete Evaluation holds the recorded Findings whole, exactly one per Criterion",
     "G7": "a complete Evaluation never changes",
     # loop: REQ-0007
     "L1": "the loop makes no more requests than the turn limit",
     "L2": "the loop returns an Evaluation exactly when the model completed one, otherwise reports none, and then makes no further request",
-    "L3": "a returned Evaluation has the Findings that were accepted, one per Criterion",
+    "L3": "a returned Evaluation has the Findings that were accepted, whole, one per Criterion",
     "L4": "with no Evaluation, the outstanding Rejections are the Criteria with no Finding",
     "L5": "every tool call of a turn is answered once, in order, in the next request",
     "L6": "the Evaluation is the one the domain layer computes from the accepted Findings",
@@ -165,6 +166,7 @@ def check_scoring(max_criteria: int = 3, max_weight: int = 3) -> dict:
                 for outcomes in itertools.product(OUTCOMES, repeat=count):
                     case = {"weights": weights, "critical": critical, "outcomes": outcomes}
                     given = [findings[(index, outcome)] for index, outcome in enumerate(outcomes)]
+                    whole = _whole(given)
                     points = scoring.score(given, card)
                     require(0 <= points <= 100, "S1", **case, score=points)
 
@@ -199,12 +201,19 @@ def check_scoring(max_criteria: int = 3, max_weight: int = 3) -> dict:
                             score=points,
                         )
                         require(final == (not critical_failure and applied > 0), "S4", **case)
-                        require(_judgements(evaluation.findings) == _judgements(given), "S5", **case)
+                        require(_whole(evaluation.findings) == whole, "S5", **case)
     return {"evaluations": evaluations, "finding_lists": finding_lists}
 
 
 def _judgements(findings: Iterable[Finding]) -> list[tuple[str, str]]:
     return [(finding.criterion, _value(finding.finding_outcome)) for finding in findings]
+
+
+def _whole(findings: Iterable[Finding]) -> list[tuple]:
+    """Every field of each Finding. Compared and never shown: a rationale stays out of messages."""
+    return [
+        (f.criterion, _value(f.finding_outcome), f.cited_utterances, f.rationale) for f in findings
+    ]
 
 
 def _value(member) -> str:
@@ -273,6 +282,11 @@ def check_session(max_criteria: int = 3) -> dict:
     Utterances, and the proposals of `proposals`: every Criterion and one
     unknown one, every outcome, six ways of citing, and seven things that are
     not a Finding at all.
+
+    Two states are the same when they hold the same Criteria and outcomes in the
+    same order. What a recorded Finding cites does not make a new state, so each
+    way of citing is tried from every state but not carried into every later one.
+    The Findings are still compared whole at every step.
     """
     states = transitions = 0
     for count in range(1, max_criteria + 1):
@@ -286,12 +300,13 @@ def check_session(max_criteria: int = 3) -> dict:
             current = frontier.popleft()  # breadth first: the fewest steps come first
             states += 1
             before = _state(current)
+            held = _whole(current.findings)
             recorded = tuple(criterion for criterion, _ in before[0])
             case = {"criteria": ids, "recorded": before[0]}
 
             if before[1]:
                 kept = current.evaluation
-                require(_judgements(kept.findings) == list(before[0]), "G6", **case)
+                require(_whole(kept.findings) == held, "G6", **case)
                 require(sorted(recorded) == ids, "G6", **case)
                 for label, proposal in offered:
                     probe = copy.deepcopy(current)
@@ -317,11 +332,24 @@ def check_session(max_criteria: int = 3) -> dict:
                 named = {_value(rejection.rejection_rule) for rejection in rejections}
                 broken = broken_rules(proposal, count, recorded)
                 require(named == broken, "G3", **case, named=sorted(named), broken=sorted(broken))
+                proposed = proposal.get("criterion") if isinstance(proposal, dict) else None
+                about = {rejection.criterion for rejection in rejections}
+                require(about <= {proposed if isinstance(proposed, str) else None}, "G3", **case)
                 if rejections:
                     require(after == before, "G1", **case)
+                    require(_whole(after_proposal.findings) == held, "G1", **case)
                 else:
-                    judgement = (proposal["criterion"], proposal["finding_outcome"])
-                    require(after == (before[0] + (judgement,), False), "G2", **case)
+                    # Citing nothing and not citing are told apart: neither becomes the other.
+                    proposed_whole = (
+                        proposal["criterion"],
+                        proposal["finding_outcome"],
+                        proposal.get("cited_utterances"),
+                        proposal["rationale"],
+                    )
+                    require(
+                        _whole(after_proposal.findings) == [*held, proposed_whole], "G2", **case
+                    )
+                    require(after_proposal.evaluation is None, "G2", **case)
                 if after not in seen:
                     seen.add(after)
                     frontier.append(after_proposal)
@@ -336,6 +364,7 @@ def check_session(max_criteria: int = 3) -> dict:
             after = _state(finished)
             missing = [criterion for criterion in ids if criterion not in recorded]
             require(after == (before[0], not missing), "G4", **case)
+            require(_whole(finished.findings) == held, "G4", **case)
             require((not rejections) == (not missing), "G4", **case)
             require(
                 [(_value(r.rejection_rule), r.criterion) for r in rejections]
@@ -422,32 +451,38 @@ class Expected:
 
     result: str
     requests: int
-    accepted: list[str]
+    accepted: list[dict]  # the tool inputs that were acceptable, in order
+
+    @property
+    def judged(self) -> list[str]:
+        return [tool_input["criterion"] for tool_input in self.accepted]
 
     @property
     def missing(self) -> list[str]:
-        return [criterion for criterion in LOOP_CRITERIA if criterion not in self.accepted]
+        return [criterion for criterion in LOOP_CRITERIA if criterion not in self.judged]
 
 
 def expected(script: tuple[str, ...]) -> Expected:
     """The oracle for the loop, written from the Requirements and not from agent.py."""
-    accepted: list[str] = []
+    accepted: list[dict] = []
+    judged: list[str] = []
     for turn, name in enumerate(script, start=1):
         stop_reason, calls = TURNS[name]
         if stop_reason == "refusal":
             return Expected(DECLINED, turn, accepted)
         if stop_reason == "max_tokens":
             return Expected(CUT_OFF, turn, accepted)
-        complete = not calls and sorted(accepted) == LOOP_CRITERIA
+        complete = not calls and sorted(judged) == LOOP_CRITERIA
         for tool, tool_input in calls:
             if complete:
                 break
             if tool == RECORD_FINDING:
                 criterion = tool_input["criterion"]
-                if tool_input["cited_utterances"] and criterion not in accepted:
-                    accepted.append(criterion)
+                if tool_input["cited_utterances"] and criterion not in judged:
+                    accepted.append(tool_input)
+                    judged.append(criterion)
             elif tool == FINISH_EVALUATION:
-                complete = sorted(accepted) == LOOP_CRITERIA
+                complete = sorted(judged) == LOOP_CRITERIA
         if complete:
             return Expected(EVALUATED, turn, accepted)
     return Expected(OUT_OF_TURNS, len(script), accepted)
@@ -507,7 +542,12 @@ def check_loop(max_turns: int = 4, observe: Callable[[Run], None] | None = None)
             require(len(run.requests) == want.requests, "L2", **case, requests=len(run.requests))
             if run.evaluation is not None:
                 found = [finding.criterion for finding in run.evaluation.findings]
-                require(found == want.accepted, "L3", **case, findings=found)
+                require(found == want.judged, "L3", **case, findings=found)
+                given = [
+                    (i["criterion"], i["finding_outcome"], i["cited_utterances"], i["rationale"])
+                    for i in want.accepted
+                ]
+                require(_whole(run.evaluation.findings) == given, "L3", **case, findings=found)
                 require(sorted(found) == LOOP_CRITERIA, "L3", **case, findings=found)
                 recomputed = scoring.conclude(CALL, card, list(run.evaluation.findings))
                 require(recomputed == run.evaluation, "L6", **case)
