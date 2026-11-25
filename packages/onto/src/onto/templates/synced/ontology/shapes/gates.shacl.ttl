@@ -145,12 +145,15 @@ gate:ReplacedRequirementIsMarked a sh:NodeShape ;
                 FILTER (?status != "superseded")
             }""" ] ;
     sh:sparql [
-        sh:message "Requirement has status superseded but no Requirement replaces it." ;
+        sh:message "Requirement has status superseded but no Requirement that is done replaces it." ;
         sh:prefixes gate: ;
         sh:select """
             SELECT $this WHERE {
                 $this a wf:Requirement ; wf:status "superseded" .
-                FILTER NOT EXISTS { ?later a wf:Requirement ; prov:wasRevisionOf $this }
+                FILTER NOT EXISTS {
+                    ?later a wf:Requirement ; prov:wasRevisionOf $this ; wf:status ?decided .
+                    FILTER (?decided IN ("done", "superseded"))
+                }
             }""" ] ;
     sh:sparql [
         sh:message "Requirement replaces itself through a chain of Requirements." ;

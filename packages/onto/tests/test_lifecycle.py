@@ -143,7 +143,15 @@ def test_a_superseded_requirement_names_its_successor(repo):
     repo.item("REQ-0001", status="superseded")
     assert gate(repo) == {"REQ-0001": [REPLACED]}
 
-    repo.item("REQ-0002", replaces="REQ-0001")
+    for undecided in ("draft", "ready", "in_progress"):
+        repo.item("REQ-0002", status=undecided, replaces="REQ-0001")
+        assert gate(repo) == {"REQ-0001": [REPLACED]}, undecided
+
+    verified(repo, "REQ-0002", status="done", replaces="REQ-0001")
+    assert gate(repo) == {}
+
+    repo.item("REQ-0002", status="superseded", replaces="REQ-0001")  # replaced in its turn
+    verified(repo, "REQ-0003", status="done", replaces="REQ-0002")
     assert gate(repo) == {}
 
 
@@ -373,27 +381,28 @@ def test_a_requirement_does_not_replace_itself_directly_or_round_a_ring(repo):
     assert [rules(repo, f"REQ-000{n}") for n in (1, 2, 3, 4)] == [[], [], [], []]
 
 
-def test_a_requirement_withdrawn_before_its_successor_is_done_is_a_warning(repo):
+def test_a_requirement_withdrawn_before_its_successor_is_done_is_refused(repo):
+    """`onto validate` warns on the file being edited, and the gate refuses it."""
     repo.item("REQ-0001", status="superseded")
-    repo.item("REQ-0002", status="draft", replaces="REQ-0001")
-    assert gate(repo) == {}  # the gate accepts a successor of any status
+    for undecided in ("draft", "ready", "in_progress"):
+        repo.item("REQ-0002", status=undecided, replaces="REQ-0001")
+        assert gate(repo) == {"REQ-0001": [REPLACED]}, undecided
+        assert rules(repo, "REQ-0001") == [("withdrawn-early", "warning")], undecided
 
-    assert rules(repo, "REQ-0001") == [("withdrawn-early", "warning")]
-
-    repo.item("REQ-0002", status="done", replaces="REQ-0001")
+    verified(repo, "REQ-0002", status="done", replaces="REQ-0001")
+    assert gate(repo) == {}
     assert rules(repo, "REQ-0001") == []
     repo.item("REQ-0002", status="superseded", replaces="REQ-0001")  # itself replaced later
     repo.item("REQ-0003", status="done", replaces="REQ-0002")
     assert rules(repo, "REQ-0001") == []
 
 
-def test_a_shipped_rule_with_no_test_can_be_withdrawn_behind_a_draft(repo, capsys):
-    """A limit of the gates as they stand, pinned so that it is known.
+def test_a_shipped_rule_with_no_test_cannot_be_withdrawn_behind_a_draft(repo, capsys):
+    """A superseded Requirement is not held to a Test, so its successor must be decided.
 
-    A superseded Requirement is not held to a Test, and the gate takes a successor
-    of any status. So a rule that shipped can leave verification with a draft in
-    its place, and only the warning speaks. When the gate asks for a successor
-    that is done, this test fails and can go.
+    Without that, a rule that shipped could leave verification with a draft in its
+    place. The gate takes only a successor that is done, or one that was done and
+    has itself been replaced.
     """
     repo.item("REQ-0001", status="done")
     repo.item("TASK-0001", status="done", implements=["REQ-0001"])
@@ -402,9 +411,13 @@ def test_a_shipped_rule_with_no_test_can_be_withdrawn_behind_a_draft(repo, capsy
     repo.item("REQ-0002", status="draft", replaces="REQ-0001")
     repo.item("REQ-0001", status="superseded")
 
-    assert gate(repo) == {}
-    assert main(["trace"]) == 0
+    assert gate(repo) == {"REQ-0001": [REPLACED]}
+    assert main(["trace"]) == 1
+    assert "no Requirement that is done replaces it" in capsys.readouterr().out
     assert rules(repo, "REQ-0001") == [("withdrawn-early", "warning")]
+
+    repo.item("REQ-0002", status="done", replaces="REQ-0001")  # done, so held to a Test itself
+    assert gate(repo) == {"REQ-0002": [UNVERIFIED]}
 
 
 # --- what a branch answers for -----------------------------------------------------
@@ -468,7 +481,7 @@ def _drops_replaces(repo):
 
 def _deletes_the_successor(repo):
     verified(repo, "REQ-0001", status="superseded")
-    repo.item("REQ-0002", status="draft", replaces="REQ-0001")
+    verified(repo, "REQ-0002", status="done", replaces="REQ-0001")
     yield
     (repo.root / "work/REQ-0002.md").unlink()
 

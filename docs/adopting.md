@@ -295,8 +295,10 @@ uv run onto new Requirement "title=Every item has an owner or a label" bounded_c
 ```
 
 Once the new Requirement is done, `onto trace` exits 1 with
-`gate:ReplacedRequirementIsMarked` until the old one reads `superseded`, and a
-Requirement that reads `superseded` must have one that replaces it.
+`gate:ReplacedRequirementIsMarked` until the old one reads `superseded`. A
+Requirement that reads `superseded` must be replaced by one that is `done`, or
+by one that was done and has been replaced in its turn. A draft in its place
+is refused.
 `uv run onto cq CQ-09 --bind requirement=REQ-0001` shows what replaced a
 Requirement, all the way forward. `onto validate` refuses a Requirement whose
 `replaces` leads back to itself, and so does the gate. `onto validate` warns
@@ -394,13 +396,13 @@ outside one. CI and the CODEOWNERS review are the controls.
   fails while a gate or question disagrees with the workflow ontology.
 - **Some rules are checked late.** `onto new` accepts a Requirement that uses a
   term classified PII at a low risk tier. `onto trace` rejects it.
-- **A Requirement cannot be withdrawn with nothing in its place.** A
-  Requirement that reads `superseded` needs one that replaces it. The gate
-  accepts a successor of any status, so a draft is enough for it:
-  `onto validate` warns until the successor is done, and does not fail. A
-  superseded Requirement is not held to a Test, so a rule that shipped can be
-  withdrawn this way with no Test and every command exiting 0. Treat the
-  `withdrawn-early` warning as a finding in review.
+- **A Requirement cannot be withdrawn with nothing in force in its place.** A
+  Requirement that reads `superseded` needs a successor that is `done`, or one
+  that is itself `superseded`. `onto validate` warns with `withdrawn-early`
+  while the successor is not decided, and `onto trace` exits 1 with
+  `gate:ReplacedRequirementIsMarked`. A superseded Requirement is not held to
+  a Test, and the successor that is done is. So set the new Requirement to
+  `done` and the old one to `superseded` in the same step.
 - **The Incident gate reads statuses, not what happened.** An Incident that
   `breaks` a Requirement which was never set back from `done` passes
   `gate:ClosedIncidentIsFixed` at once. The Incident playbook asks for the
