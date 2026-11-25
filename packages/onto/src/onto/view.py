@@ -55,10 +55,7 @@ def build(ws: Workspace) -> dict:
         _task(ws, task, rows, file_problems, gate_problems, term_problems, in_force)
         for task in ws.of_class("Task")
     ]
-    replaced_by: dict[str, list[str]] = {}
-    for requirement in ws.of_class("Requirement"):
-        for earlier in requirement.values("replaces"):
-            replaced_by.setdefault(earlier, []).append(requirement.id)
+    replaced_by = {row.requirement: row.replaced_by for row in rows.values()}
     return {
         "task_in_hand": task_in_hand.id if task_in_hand else None,
         "stages": [{"key": key, "label": label, "gate": gate} for key, label, gate in STAGES],
@@ -76,7 +73,7 @@ def build(ws: Workspace) -> dict:
                     "tests": row.tests,
                     "verdict": row.verdict,
                     "replaces": _one(ws, row.requirement, "replaces"),
-                    "replaced_by": replaced_by.get(row.requirement, []),
+                    "replaced_by": row.replaced_by,
                     "raised_from": _one(ws, row.requirement, "raised_from"),
                 }
                 for row in rows.values()

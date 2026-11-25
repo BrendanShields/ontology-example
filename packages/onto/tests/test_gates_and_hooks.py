@@ -541,10 +541,22 @@ def test_the_view_of_the_real_repository():
 
     built = view.build(Workspace.at())
     stages = {t["id"]: t["stage"] for t in built["tasks"]}
-    assert stages["TASK-0004"] == "design"
-    # TASK-0001 is implemented and tested. Whether it shows as verified depends on
+    # Every Task is implemented and tested. Whether one shows as verified depends on
     # Evidence, which only a test run writes, so a clean checkout has it at verify.
-    assert stages["TASK-0001"] in ("verify", "complete")
+    assert stages["TASK-0001"] in ("verify", "complete")  # CHG-0001 resolves it
+    assert stages["TASK-0004"] in ("verify", "ship")  # done, and no Change resolves it yet
+    assert built["plan"]["order"] == [] and built["plan"]["open_incidents"] == []
+    # The one rule of the repository that was replaced: it is no claim, so it is not untested.
+    assert built["plan"]["superseded_requirements"] == [
+        {
+            "id": "REQ-0009",
+            "title": "Scores under review are not published",
+            "replaced_by": ["REQ-0016"],
+        }
+    ]
+    rows = {row["id"]: row for row in built["trace"]["requirements"]}
+    assert (rows["REQ-0009"]["verdict"], rows["REQ-0016"]["replaces"]) == ("superseded", "REQ-0009")
+    assert "REQ-0016 [done] replaces REQ-0009" in view.render_text(built)
     unrelated_to_evidence = [
         v for v in built["trace"]["violations"] if v["rule"] != "gate:CompleteRequirementIsVerified"
     ]

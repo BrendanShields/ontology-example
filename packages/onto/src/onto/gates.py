@@ -158,9 +158,12 @@ class TraceRow:
     risk: str | None = None
     tasks: set[str] = field(default_factory=set)
     tests: dict[str, str | None] = field(default_factory=dict)  # test -> pass | fail | None
+    replaced_by: list[str] = field(default_factory=list)
 
     @property
     def verdict(self) -> str:
+        if self.status == "superseded":
+            return "superseded"  # no longer a claim, so there is nothing to verify
         if not self.tests:
             return "untested"
         results = set(self.tests.values())
@@ -189,6 +192,10 @@ def traceability(graph: WorkGraph) -> list[TraceRow]:
             row.tests[found["test"]] = (
                 "fail" if "fail" in (previous, result) else result or previous
             )
+    for requirement in graph.ws.of_class("Requirement"):
+        for earlier in requirement.values("replaces"):
+            if earlier in rows:
+                rows[earlier].replaced_by.append(requirement.id)
     return sorted(rows.values(), key=lambda r: r.requirement)
 
 

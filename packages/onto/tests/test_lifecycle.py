@@ -246,21 +246,18 @@ def test_a_revision_across_the_two_classes_is_refused_under_its_own_slot_name(re
     assert shapes["DEC-0002"].line == ws.by_id["DEC-0002"].line_of("supersedes")
 
 
-def test_on_a_refused_link_the_decision_gate_takes_a_requirement_for_a_reviser(repo):
-    """A limit of gate:SupersededDecisionIsMarked as written, pinned so that it is known.
-
-    The gate does not ask what class the reviser is. The link is refused before
-    that matters, by `onto validate` and by the generated shape (the test above),
-    so the only effect is one more message on data that is already in error.
-    When the gate asks for a Decision, this test fails and can go.
-    """
+def test_on_a_refused_link_the_decision_gate_stays_quiet(repo):
+    """The Decision gate reads only Decisions as revisers, in both of its constraints."""
     repo.item("DEC-0001")
     repo.item("REQ-0001", status="done", replaces="DEC-0001")
 
     found = gate(repo)
 
-    assert found["DEC-0001"] == [SUPERSEDED_DECISION]
-    assert "shape" in found["REQ-0001"]
+    assert "DEC-0001" not in found  # a Requirement supersedes no Decision
+    assert "shape" in found["REQ-0001"]  # the link itself is what is refused
+
+    repo.item("DEC-0001", status="superseded")
+    assert gate(repo)["DEC-0001"] == [SUPERSEDED_DECISION]  # nor is it a successor for one
 
 
 # --- a rule change, start to finish ------------------------------------------------
@@ -285,30 +282,36 @@ def test_a_rule_changes_by_a_requirement_that_replaces_the_old_one(repo):
     repo.item("TASK-0002", status="done", implements=["REQ-0002"])
     assert REPLACED in gate(repo)["REQ-0001"]
 
-    # The old Requirement and the work that delivered it leave the record of what is in force.
+    # Only the old Requirement is marked. The Task and the Change that delivered it
+    # stay done: they record work that shipped.
     repo.item("REQ-0001", status="superseded")
-    repo.item("TASK-0001", status="superseded", implements=["REQ-0001"])
-    repo.item("CHG-0001", status="superseded", resolves=["TASK-0001"])
     assert gate(repo) == {}
 
 
-def test_a_superseded_requirement_whose_task_is_still_done_is_still_held_to_a_test(repo):
-    """A limit of the gates as they stand, which the rule-change playbook works to.
-
-    gate:CompleteRequirementIsVerified reads "all its Tasks are done" as a claim
-    whatever the Requirement's own status, so the Task that delivered a replaced
-    rule cannot stay done once no Test verifies that rule. When the gate learns
-    to leave a superseded Requirement alone, this test fails and the playbook's
-    step for the old Task and Change can go.
-    """
+def test_a_superseded_requirement_is_not_held_to_a_test(repo):
     shipped_rule(repo)
     repo.item("REQ-0002", status="done", replaces="REQ-0001")
-    repo.item("TST-0001", verifies=["REQ-0002"])
-    repo.item("REQ-0001", status="superseded")
-    assert gate(repo) == {"REQ-0001": [UNVERIFIED]}
+    repo.item("TST-0002", verifies=["REQ-0002"])
+    repo.item("EVD-0002", of_test="TST-0002")
 
-    repo.item("TASK-0001", status="superseded", implements=["REQ-0001"])
-    assert gate(repo) == {"CHG-0001": ["gate:DoneChangeResolvesDoneTasks"]}
+    # Its Task is done and its own Test now fails: while it is a claim, both constraints speak.
+    repo.item("EVD-0001", of_test="TST-0001", result="fail")
+    assert sorted(gate(repo)["REQ-0001"]) == [UNVERIFIED, REPLACED]
+    repo.item("REQ-0001", status="superseded")
+    assert gate(repo) == {}
+
+    # Nor with no Test left at all, the Task that delivered it still done.
+    (repo.root / "work/TST-0001.md").unlink()
+    (repo.root / "work/evidence/EVD-0001.md").unlink()
+    assert gate(repo) == {}
+    repo.item("REQ-0001", status="done")
+    assert sorted(gate(repo)["REQ-0001"]) == [UNVERIFIED, REPLACED]
+
+
+def test_superseded_is_no_way_round_the_test_for_a_rule_nothing_replaces(repo):
+    repo.item("REQ-0001", status="superseded")
+    repo.item("TASK-0001", status="done", implements=["REQ-0001"])
+    assert gate(repo) == {"REQ-0001": [REPLACED]}
 
 
 # --- what validate holds that the gates do not --------------------------------------
@@ -348,19 +351,25 @@ def test_an_incident_says_when_it_was_observed(repo, capsys):
 
 
 def test_a_requirement_does_not_replace_itself_directly_or_round_a_ring(repo):
+    """The gate refuses a ring, and `onto validate` says so first, on the file being edited."""
     repo.item("REQ-0001", status="superseded", replaces="REQ-0001")
-    assert gate(repo) == {}  # the gate has no constraint on a ring
+    assert gate(repo) == {"REQ-0001": [REPLACED]}
     assert rules(repo, "REQ-0001") == [("replaces-cycle", "error")]
 
     repo.item("REQ-0001", status="superseded", replaces="REQ-0003")
     repo.item("REQ-0002", status="superseded", replaces="REQ-0001")
     repo.item("REQ-0003", status="superseded", replaces="REQ-0002")
-    repo.item("REQ-0004", status="done", replaces="REQ-0003")  # leads into the ring, not in it
+    verified(repo, "REQ-0004", status="done", replaces="REQ-0003")  # leads into the ring
+    ws = repo.ws()
+    ring = {p.subject: p.message for p in errors(gates.run_shacl(ws, build_graph(ws)))}
+    assert sorted(ring) == ["REQ-0001", "REQ-0002", "REQ-0003"]
+    assert all("replaces itself through a chain" in message for message in ring.values())
     for member in ("REQ-0001", "REQ-0002", "REQ-0003"):
         assert rules(repo, member) == [("replaces-cycle", "error")], member
     assert rules(repo, "REQ-0004") == []
 
     repo.item("REQ-0001", status="superseded")  # a chain with an end
+    assert gate(repo) == {}
     assert [rules(repo, f"REQ-000{n}") for n in (1, 2, 3, 4)] == [[], [], [], []]
 
 
@@ -409,27 +418,24 @@ def test_a_branch_that_reopens_a_requirement_answers_for_the_incident_it_closed(
         git(repo, "checkout", "-q", "--", ".")
 
 
-def test_a_branch_that_supersedes_a_task_answers_for_the_change_that_resolved_it(
+def test_a_branch_that_takes_a_task_back_answers_for_the_change_that_resolved_it(
     repo, monkeypatch, capsys
 ):
     shipped_rule(repo)
     repo.item("TASK-0009", status="done", implements=["REQ-0001"])
     repo.item("CHG-0009", status="done", resolves=["TASK-0009"])  # another Change, left alone
     committed(repo)
-    verified(repo, "REQ-0002", status="done", replaces="REQ-0001")
-    repo.item("TST-0001", verifies=["REQ-0002"])
-    repo.item("REQ-0001", status="superseded")
-    repo.item("TASK-0001", status="superseded", implements=["REQ-0001"])
-    repo.item("TASK-0009", status="superseded", implements=["REQ-0001"])
-    repo.item("CHG-0009", status="superseded", resolves=["TASK-0009"])
+    for status in ("in_progress", "superseded"):
+        repo.item("TASK-0001", status=status, implements=["REQ-0001"])
 
-    # The Change is not drawn into the scope, and the gate on it is still heard.
-    assert "CHG-0001" not in gates.branch_scope(repo.ws())
-    assert main(["trace", "--scope", "branch"]) == 1
-    out = capsys.readouterr().out
-    assert "CHG-0001" in out and "gate:DoneChangeResolvesDoneTasks" in out
+        # The Change is not drawn into the scope, and the gate on it is still heard.
+        assert "CHG-0001" not in gates.branch_scope(repo.ws())
+        assert main(["trace", "--scope", "branch"]) == 1
+        out = capsys.readouterr().out
+        assert "CHG-0001" in out and "gate:DoneChangeResolvesDoneTasks" in out
+        assert "CHG-0009" not in out
 
-    repo.item("CHG-0001", status="superseded", resolves=["TASK-0001"])
+    repo.item("CHG-0001", status="in_progress", resolves=["TASK-0001"])
     assert main(["trace", "--scope", "branch"]) == 0, capsys.readouterr().out
 
 
@@ -766,17 +772,34 @@ def test_the_view_keeps_every_key_the_mods_draw(repo):
     )
 
 
-def test_work_that_was_superseded_is_not_shown_as_waiting(repo):
+def test_the_task_that_shipped_a_rule_since_replaced_still_reads_complete(repo):
+    shipped_rule(repo)
+    verified(repo, "REQ-0002", status="done", replaces="REQ-0001")
+    repo.item("TASK-0002", status="done", implements=["REQ-0002"])
+    repo.item("REQ-0001", status="superseded")
+    built = view.build(repo.ws())
+    tasks = {t["id"]: t for t in built["tasks"]}
+    rows = {row["id"]: row for row in built["trace"]["requirements"]}
+
+    assert tasks["TASK-0001"]["stage"] == "complete"
+    verify = next(s for s in tasks["TASK-0001"]["stages"] if s["key"] == "verify")
+    assert verify["detail"] == "every Requirement it implements is superseded"
+    assert rows["REQ-0001"]["verdict"] == "superseded"  # not a claim, so not one left untested
+    assert built["trace"]["coverage"] == {"requirements": 1, "with_test": 1, "verified": 1}
+    assert built["trace"]["violations"] == []
+
+
+def test_a_task_that_was_itself_superseded_is_not_shown_as_waiting(repo):
     repo.item("REQ-0001", status="superseded")
     verified(repo, "REQ-0002", status="done", replaces="REQ-0001")
+    # Dropped before it shipped.
     repo.item("TASK-0001", status="superseded", implements=["REQ-0001"])
     repo.item("TASK-0002", status="done", implements=["REQ-0002"])
     repo.item("TASK-0003", status="ready", implements=["REQ-0002"], blocked_by=["TASK-0001"])
-    repo.item("CHG-0001", status="superseded", resolves=["TASK-0001"])
     built = view.build(repo.ws())
     tasks = {t["id"]: t for t in built["tasks"]}
 
-    assert tasks["TASK-0001"]["stage"] == "complete"
+    assert tasks["TASK-0001"]["stage"] != "trace"  # nobody is still to act on it
     assert built["plan"]["order"] == ["TASK-0003"]  # a superseded Task blocks nothing
 
 

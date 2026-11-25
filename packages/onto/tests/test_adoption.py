@@ -505,9 +505,12 @@ def test_an_incident_is_closed_only_by_a_verified_requirement(adopter):
     assert onto(adopter, "validate").returncode == 0
 
     waiting = onto(adopter, "cq", "CQ-08")
-    assert re.search(rf"^{incident}\s+in_progress\s+{requirement}\s+in_progress$", waiting.stdout, re.M)
-    assert f"{incident} [in_progress] An item was shown with no owner: waiting on {requirement}" in (
-        onto(adopter, "view").stdout
+    assert re.search(
+        rf"^{incident}\s+in_progress\s+{requirement}\s+in_progress$", waiting.stdout, re.M
+    )
+    assert (
+        f"{incident} [in_progress] An item was shown with no owner: waiting on {requirement}"
+        in (onto(adopter, "view").stdout)
     )
 
     # Closed by saying so: the gate refuses.
@@ -570,13 +573,18 @@ def test_a_rule_changes_by_a_requirement_that_replaces_the_old_one(adopter):
     assert "gate:ReplacedRequirementIsMarked" in unmarked.stdout
     assert "gate:SupersededDecisionIsMarked" in unmarked.stdout
 
+    # Only the old rule and the old Decision are marked. The Task that shipped the old
+    # rule stays done, and the old rule, now with no Test, is not held to one.
     set_status(adopter, old, "superseded")
     set_status(adopter, old_decision, "superseded")
-    set_status(adopter, old_task, "superseded")
     collect(adopter)
     for gate in (["validate"], ["trace"], ["rules"]):
         held = onto(adopter, *gate)
         assert held.returncode == 0, f"onto {' '.join(gate)}\n{held.stdout}{held.stderr}"
+    matrix = onto(adopter, "trace").stdout
+    assert re.search(
+        rf"^{old}\s+superseded\s.*{old_task}.*replaced by {replacement}$", matrix, re.M
+    )
 
     forward = onto(adopter, "cq", "CQ-09", "--bind", f"requirement={old}")
     assert re.search(rf"^{old}\s+{replacement}\s+done\s", forward.stdout, re.M)

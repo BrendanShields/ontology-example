@@ -471,6 +471,7 @@ def _trace(args) -> int:
                             "tasks": sorted(r.tasks),
                             "tests": r.tests,
                             "verdict": r.verdict,
+                            "replaced_by": r.replaced_by,
                         }
                         for r in rows
                     ],
@@ -524,7 +525,9 @@ def _trace_table(rows: list) -> str:
                 "tasks": " ".join(sorted(row.tasks)) or "-",
                 "tests": " ".join(f"{t}:{r or 'none'}" for t, r in sorted(row.tests.items()))
                 or "-",
-                "verdict": row.verdict,
+                "verdict": f"replaced by {', '.join(row.replaced_by)}"
+                if row.status == "superseded" and row.replaced_by
+                else row.verdict,
             }
             for row in rows
         ]
