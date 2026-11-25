@@ -245,6 +245,23 @@ def test_a_revision_across_the_two_classes_is_refused_under_its_own_slot_name(re
     assert shapes["DEC-0002"].line == ws.by_id["DEC-0002"].line_of("supersedes")
 
 
+def test_on_a_refused_link_the_decision_gate_takes_a_requirement_for_a_reviser(repo):
+    """A limit of gate:SupersededDecisionIsMarked as written, pinned so that it is known.
+
+    The gate does not ask what class the reviser is. The link is refused before
+    that matters, by `onto validate` and by the generated shape (the test above),
+    so the only effect is one more message on data that is already in error.
+    When the gate asks for a Decision, this test fails and can go.
+    """
+    repo.item("DEC-0001")
+    repo.item("REQ-0001", status="done", replaces="DEC-0001")
+
+    found = gate(repo)
+
+    assert found["DEC-0001"] == [SUPERSEDED_DECISION]
+    assert "shape" in found["REQ-0001"]
+
+
 # --- a rule change, start to finish ------------------------------------------------
 
 
@@ -322,6 +339,30 @@ def test_a_branch_that_reopens_a_requirement_answers_for_the_incident_it_closed(
         found = gates.in_scope(errors(gates.run_shacl(ws, build_graph(ws))), gates.branch_scope(ws))
         assert [(p.subject, p.rule) for p in found] == [("INC-0001", CLOSED)], reopened
         git(repo, "checkout", "-q", "--", ".")
+
+
+def test_a_branch_that_supersedes_a_task_answers_for_the_change_that_resolved_it(
+    repo, monkeypatch, capsys
+):
+    shipped_rule(repo)
+    repo.item("TASK-0009", status="done", implements=["REQ-0001"])
+    repo.item("CHG-0009", status="done", resolves=["TASK-0009"])  # another Change, left alone
+    committed(repo)
+    verified(repo, "REQ-0002", status="done", replaces="REQ-0001")
+    repo.item("TST-0001", verifies=["REQ-0002"])
+    repo.item("REQ-0001", status="superseded")
+    repo.item("TASK-0001", status="superseded", implements=["REQ-0001"])
+    repo.item("TASK-0009", status="superseded", implements=["REQ-0001"])
+    repo.item("CHG-0009", status="superseded", resolves=["TASK-0009"])
+
+    # The Change is not drawn into the scope, and the gate on it is still heard.
+    assert "CHG-0001" not in gates.branch_scope(repo.ws())
+    assert main(["trace", "--scope", "branch"]) == 1
+    out = capsys.readouterr().out
+    assert "CHG-0001" in out and "gate:DoneChangeResolvesDoneTasks" in out
+
+    repo.item("CHG-0001", status="superseded", resolves=["TASK-0001"])
+    assert main(["trace", "--scope", "branch"]) == 0, capsys.readouterr().out
 
 
 def test_the_stop_gate_holds_an_incident_closed_too_early(repo, monkeypatch, capsys):

@@ -389,7 +389,8 @@ outside one. CI and the CODEOWNERS review are the controls.
   reads "every Task of this Requirement is done" as a claim, also on a
   Requirement that is superseded. So the Task that delivered only the old rule,
   and its Change, are set to `superseded` too. A Task that also implements a
-  Requirement still in force has no route yet.
+  Requirement still in force, or a Change that also resolves a Task still in
+  force, has no route yet.
 - **A Requirement cannot be withdrawn with nothing in its place.** A
   Requirement that reads `superseded` needs one that replaces it.
 - **Nothing is retired from the record.** `onto validate` holds every work

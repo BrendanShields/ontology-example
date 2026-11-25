@@ -325,6 +325,18 @@ def _closure(ws: Workspace, ids: set[str]) -> set[str]:
         scope = grown
 
 
+def answerable(ws: Workspace, scope: set[str] | None) -> set[str] | None:
+    """The scope a branch answers to the gates for: its own, and each Change over a Task in it.
+
+    A Change is kept out of the scope itself, since through it every Task it
+    resolves would come in. But a branch that takes a Task back from done has
+    made a done Change false, and has to hear of it before CI does.
+    """
+    if scope is None:
+        return None
+    return scope | {c.id for c in ws.of_class("Change") if set(c.values("resolves")) & scope}
+
+
 def in_scope(problems: list[Violation], scope: set[str] | None) -> list[Violation]:
     """The problems a scope answers for. One that is about no work item concerns every scope."""
     if scope is None:

@@ -434,7 +434,8 @@ def _trace(args) -> int:
                 return 1
 
         graph = build_graph(ws)
-        problems = gates.in_scope(gates.run_shacl(ws, graph), scope) + branch_problems
+        gate_problems = gates.in_scope(gates.run_shacl(ws, graph), gates.answerable(ws, scope))
+        problems = gate_problems + branch_problems
         rows = [
             row
             for row in gates.traceability(graph)
