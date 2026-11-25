@@ -37,6 +37,41 @@ def check_file(
     return problems
 
 
+def unchecked_layers(ws: Workspace) -> list[Violation]:
+    """A warning for each bounded context that has code and a domain layer matching no file.
+
+    Such a pattern is usually mistyped, a folder without a glob or a path that
+    is not relative to the repository root, and the vocabulary check then
+    passes because it reads nothing.
+    """
+    from .config import matches
+
+    def any_file(patterns) -> bool:
+        for pattern in patterns:
+            base = ws.cfg.root / pattern.split("*", 1)[0]
+            base = base if base.is_dir() else base.parent
+            for path in base.rglob("*") if base.is_dir() else ():
+                rel = ws.cfg.rel(path)
+                if path.is_file() and "__pycache__" not in rel and matches(rel, (pattern,)):
+                    return True
+        return False
+
+    return [
+        Violation(
+            rule="unchecked-layer",
+            severity=WARNING,
+            message=(
+                f"domain_paths of [contexts.{context.name}] ({', '.join(context.domain_paths)}) "
+                "match no file although the context has code, so its vocabulary is not checked"
+            ),
+            file="onto.toml",
+            fix="write each as a glob from the repository root, such as src/app/domain/**",
+        )
+        for context in ws.cfg.contexts.values()
+        if context.domain_paths and not any_file(context.domain_paths) and any_file(context.paths)
+    ]
+
+
 def _ocr_hint(glossary: Glossary, name: str) -> str:
     return (
         "if this is a different concept, raise an OntologyChangeRequest: "

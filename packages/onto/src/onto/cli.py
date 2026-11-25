@@ -227,7 +227,7 @@ def _check_terms(args) -> int:
         return _check_terms_hook(ws, hooks.read_event())
 
     files = [ws.cfg.rel(Path(p).resolve()) for p in args.paths] or _domain_files(ws)
-    problems: list = []
+    problems: list = [] if args.paths else terms.unchecked_layers(ws)
     allowed = 0
     for rel in files:
         text = _read(ws.cfg.root / rel)

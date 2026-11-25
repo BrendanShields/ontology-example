@@ -255,6 +255,20 @@ def test_an_existing_claude_md_is_kept_and_the_section_is_written_beside_it(tmp_
     assert "/ostack-mode" in (tmp_path / "CLAUDE.onto.md").read_text(encoding="utf-8")
 
 
+def test_a_file_already_beside_the_one_that_could_not_be_merged_is_kept_too(tmp_path):
+    (tmp_path / ".claude").mkdir()
+    (tmp_path / ".claude/settings.json").write_text("// comments\n{}", encoding="utf-8")
+    (tmp_path / ".claude/settings.onto.json").write_text(SENTINEL, encoding="utf-8")
+    (tmp_path / "CLAUDE.md").write_text(SENTINEL, encoding="utf-8")
+    (tmp_path / "CLAUDE.onto.md").write_text(SENTINEL, encoding="utf-8")
+
+    steps = {step.path: step.status for step in scaffold.scaffold(options(tmp_path))}
+
+    for rel in (".claude/settings.onto.json", "CLAUDE.onto.md"):
+        assert (tmp_path / rel).read_text(encoding="utf-8") == SENTINEL
+        assert steps[rel] == scaffold.EXISTS
+
+
 def test_a_context_the_existing_onto_toml_does_not_have_gets_no_glossary(tmp_path):
     scaffold.scaffold(options(tmp_path))
 
@@ -272,6 +286,9 @@ def test_a_context_the_existing_onto_toml_does_not_have_gets_no_glossary(tmp_pat
         {"domain_path": "domain/**"},
         {"domain_path": "../x/domain/**"},
         {"base_uri": "library"},
+        {"base_uri": "https://library.example/a b"},
+        {"base_uri": 'https://library.example/a>b"c'},
+        {"context": "linkml"},
     ],
 )
 def test_options_that_would_scaffold_something_broken_are_refused(tmp_path, bad):
@@ -280,7 +297,40 @@ def test_options_that_would_scaffold_something_broken_are_refused(tmp_path, bad)
     assert not any(tmp_path.iterdir())
 
 
+@pytest.mark.parametrize("given", ["src/loans/domain", "./src/loans/domain/**", "src/loans/domain/"])
+def test_a_domain_path_written_loosely_still_puts_the_layer_under_the_vocabulary_gate(
+    tmp_path, given
+):
+    repo = git_repo(tmp_path / "repo")
+    scaffold.scaffold(options(repo, domain_path=given, claude=False, ci=False))
+    domain = repo / "src/loans/domain"
+    domain.mkdir(parents=True)
+    (domain / "bad.py").write_text("class Holder:\n    pass\n", encoding="utf-8")
+
+    checked = onto(repo, "check-terms")
+
+    assert checked.returncode == 1, checked.stdout + checked.stderr
+    assert "error[denied-term]" in checked.stdout
+
+
 # --- the gates, in the adopting repository -----------------------------------------
+
+
+def test_a_domain_layer_pattern_that_matches_no_file_is_not_passed_in_silence(adopter):
+    domain = adopter / "src/loans/domain"
+    domain.mkdir(parents=True)
+    (domain / "bad.py").write_text("class Holder:\n    pass\n", encoding="utf-8")
+    assert "unchecked-layer" not in onto(adopter, "check-terms").stdout
+
+    toml = adopter / "onto.toml"
+    text = toml.read_text(encoding="utf-8")
+    assert '"src/loans/domain/**"' in text
+    toml.write_text(text.replace('"src/loans/domain/**"', '"src/loans/domain"'), encoding="utf-8")
+
+    checked = onto(adopter, "check-terms")
+
+    assert "warning[unchecked-layer]" in checked.stdout
+    assert "src/loans/domain" in checked.stdout
 
 
 def test_a_denied_synonym_in_the_domain_layer_blocks_and_the_term_does_not(adopter):

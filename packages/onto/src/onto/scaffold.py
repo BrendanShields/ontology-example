@@ -46,6 +46,21 @@ WRITTEN, EXISTS, MERGED, UNCHANGED, SKIPPED, BESIDE = (
 )
 
 _CONTEXT = re.compile(r"[a-z][a-z0-9_-]*\Z")
+_RESERVED = ("linkml",)  # the prefix of the glossary template's own imports
+
+
+def _as_glob(path: str) -> str:
+    """A domain path as the gates match it: from the repository root, and a glob.
+
+    A bare folder or a leading `./` matches no file, and a layer that matches
+    no file is a layer the vocabulary gate does not check.
+    """
+    path = path.strip()
+    while path.startswith("./"):
+        path = path[2:]
+    if path and not any(char in path for char in "*?"):
+        path = path.rstrip("/") + "/**"
+    return path
 
 
 @dataclass(frozen=True)
@@ -64,9 +79,15 @@ class Options:
                 f"--context '{self.context}' must be lower case letters, digits, '-' or '_', "
                 "starting with a letter: it names a file and a table in onto.toml"
             )
+        if self.context in _RESERVED:
+            raise ValueError(
+                f"--context '{self.context}' is a prefix every glossary already declares: "
+                "choose another name"
+            )
         if not self.domain_path:
             package = self.context.replace("-", "_")
             object.__setattr__(self, "domain_path", f"src/{package}/domain/**")
+        object.__setattr__(self, "domain_path", _as_glob(self.domain_path))
         layer = PurePosixPath(self.domain_path.split("*", 1)[0])
         if layer.is_absolute() or ".." in layer.parts or len(layer.parts) < 2:
             raise ValueError(
@@ -74,8 +95,11 @@ class Options:
                 "folder above the domain layer, such as src/app/domain/**: the generated types "
                 "are written to that folder"
             )
-        if not re.match(r"https?://[^\s/]+", self.base_uri):
-            raise ValueError(f"--base-uri '{self.base_uri}' must be an http or https URI")
+        if not re.fullmatch(r"https?://[^\s/\"<>\\^`{|}]+(/[^\s\"<>\\^`{|}]*)?", self.base_uri):
+            raise ValueError(
+                f"--base-uri '{self.base_uri}' must be an http or https URI without spaces, "
+                "quotes or angle brackets"
+            )
         object.__setattr__(self, "base_uri", self.base_uri.rstrip("/"))
         if not self.onto_cmd.strip():
             raise ValueError("--onto-cmd must not be empty")
@@ -307,14 +331,11 @@ def _settings(root: Path, ours: dict) -> Step:
         theirs = json.loads(path.read_text(encoding="utf-8"))
         merged = merge_settings(theirs, ours)
     except (json.JSONDecodeError, UnicodeDecodeError, Unmergeable) as exc:
-        beside = ".claude/settings.onto.json"
-        (root / beside).write_text(text, encoding="utf-8")
-        return Step(
-            BESIDE,
-            beside,
+        note = (
             f"{rel} could not be added to safely ({exc}): "
-            "copy the permissions and hooks from this file into it by hand",
+            "copy the permissions and hooks from this file into it by hand"
         )
+        return _beside(root, ".claude/settings.onto.json", text.encode(), note)
     if merged == theirs:
         return Step(UNCHANGED, rel)
     path.write_text(json.dumps(merged, indent=2) + "\n", encoding="utf-8")
@@ -328,10 +349,17 @@ def _claude_md(root: Path, section: bytes) -> Step:
         return Step(WRITTEN, "CLAUDE.md")
     if "onto.toml" in path.read_text(encoding="utf-8", errors="replace"):
         return Step(UNCHANGED, "CLAUDE.md")
-    beside = "CLAUDE.onto.md"
-    (root / beside).write_bytes(section)
     note = "CLAUDE.md exists: copy this section into it, then delete this file"
-    return Step(BESIDE, beside, note)
+    return _beside(root, "CLAUDE.onto.md", section, note)
+
+
+def _beside(root: Path, rel: str, data: bytes, note: str) -> Step:
+    """Write what could not be merged next to the file it belongs in, unless that is taken too."""
+    path = root / rel
+    if path.exists():
+        return Step(UNCHANGED if path.read_bytes() == data else EXISTS, rel)
+    path.write_bytes(data)
+    return Step(BESIDE, rel, note)
 
 
 # --- the command -----------------------------------------------------------------

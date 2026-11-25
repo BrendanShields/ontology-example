@@ -36,6 +36,15 @@ def test_a_missing_workflow_ontology_is_named_with_the_way_to_get_it(repo, capsy
     assert "onto init" in said
 
 
+def test_gen_names_a_missing_workflow_ontology_with_the_way_to_get_it(repo, capsys):
+    (repo.root / "ontology/workflow.yaml").unlink()
+
+    assert main(["gen", "--check"]) == 1
+    said = capsys.readouterr().err
+    assert "ontology/workflow.yaml is missing" in said
+    assert "onto init" in said
+
+
 def test_a_repository_without_the_ontology_layer_is_pointed_at_init(tmp_path, monkeypatch, capsys):
     monkeypatch.chdir(tmp_path)
     for variable in ("ONTO_ROOT", "CLAUDE_PROJECT_DIR"):
